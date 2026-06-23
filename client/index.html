@@ -42,6 +42,61 @@
       overflow-x: hidden
     }
 
+    /* Block app when login required */
+    body.auth-required .screen.active {
+      filter: blur(6px) grayscale(40%);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    body.auth-required .nav,
+    body.auth-required .conn-bar {
+      filter: blur(6px) grayscale(40%);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .auth-lock-message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 999;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 16px;
+      padding: 24px 32px;
+      text-align: center;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      display: none;
+    }
+
+    body.auth-required .auth-lock-message {
+      display: block;
+    }
+
+    .auth-lock-message .lock-icon {
+      font-size: 42px;
+      margin-bottom: 12px;
+    }
+
+    .auth-lock-message .lock-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #3b82f6, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .auth-lock-message .lock-subtitle {
+      font-size: 13px;
+      color: var(--text3);
+      line-height: 1.6;
+    }
+
     .screen {
       display: none;
       min-height: 100vh;
@@ -2888,13 +2943,19 @@
 <body>
 
   <!-- TOAST -->
+  <!-- Auth lock message -->
+  <div class="auth-lock-message">
+    <div class="lock-icon">🔐</div>
+    <div class="lock-title">Login Required</div>
+    <div class="lock-subtitle">Please login or create an account to use ScamShield</div>
+  </div>
   <!-- Toast notifications container -->
   <div id="toast-container" class="toast-container"></div>
   <!-- Legacy toast (for compatibility) -->
   <div id="toast" class="toast" style="display:none"></div>
 
   <!-- ── HOME ───────────────────────────────────────────────── -->
-   <div id="screen-home" class="screen">
+  <div id="screen-home" class="screen">
     <nav class="nav">
       <div class="nav-logo">
         <div class="logo-icon">🛡</div> ScamShield
@@ -3101,7 +3162,7 @@
       </div>
 
       <!-- Tabs -->
-            <div class="admin-tabs">
+      <div class="admin-tabs">
         <button class="atab active" onclick="switchTab('recent')">Recent Activity</button>
         <button class="atab" onclick="switchTab('modules')">By Module</button>
         <button class="atab" onclick="switchTab('sessions')">Sessions</button>
@@ -3153,7 +3214,7 @@
           </table>
         </div>
       </div>
-            <!-- Users -->
+      <!-- Users -->
       <div class="admin-section" id="tab-users">
         <div class="tbl-wrap">
           <table class="data-table">
@@ -3963,7 +4024,7 @@
 
     // Admin token storage
     const LS_ADMIN_TOKEN = 'ss_admin_token';
-        // User auth tokens
+    // User auth tokens
     const LS_USER_TOKEN = 'ss_user_token';
     const LS_USER_DATA = 'ss_user_data';
 
@@ -3995,7 +4056,7 @@
     // Kept for compatibility — all calls now use local* functions
 
     // ─── INIT SESSION ───────────────────────────────────────────────────────────
-        async function initSession() {
+    async function initSession() {
       setConnStatus('loading', 'Connecting…');
 
       // Check API connection
@@ -4024,6 +4085,18 @@
         setConnStatus('ok', 'Backend Connected ✓');
       } else {
         setConnStatus('err', 'Offline Mode (localStorage)');
+      }
+
+      // ✨ SHOW LOGIN MODAL ON LOAD (only if not logged in)
+      if (!state.currentUser) {
+        // Hide home screen content slightly
+        document.body.classList.add('auth-required');
+        // Show login modal after a short delay
+        setTimeout(function () {
+          openUserAuth('login');
+        }, 300);
+      } else {
+        document.body.classList.remove('auth-required');
       }
     }
 
@@ -4099,9 +4172,10 @@
           successEl.textContent = '✅ Welcome back, ' + data.user.username + '!';
           successEl.style.display = 'block';
 
-          setTimeout(function() {
+          setTimeout(function () {
             closeUserAuth();
             updateUserNav();
+            document.body.classList.remove('auth-required');
             showToast('Welcome back, ' + data.user.username + '!', 'ok', 'Logged In');
           }, 800);
         } else {
@@ -4120,19 +4194,62 @@
     }
 
     async function handleUserSignup() {
-      var username = document.getElementById('ua-signup-username').value.trim();
-      var email = document.getElementById('ua-signup-email').value.trim();
-      var full_name = document.getElementById('ua-signup-fullname').value.trim();
-      var password = document.getElementById('ua-signup-password').value;
-      var errorEl = document.getElementById('ua-signup-error');
-      var btn = document.getElementById('ua-signup-btn');
-      var btnText = btn.querySelector('.ua-btn-text');
-      var spinner = btn.querySelector('.spinner');
+      const username = document.getElementById('ua-signup-username').value.trim();
+      const email = document.getElementById('ua-signup-email').value.trim();
+      const full_name = document.getElementById('ua-signup-fullname').value.trim();
+      const password = document.getElementById('ua-signup-password').value;
+      const errorEl = document.getElementById('ua-signup-error');
+      const btn = document.getElementById('ua-signup-btn');
+      const btnText = btn.querySelector('.ua-btn-text');
+      const spinner = btn.querySelector('.spinner');
 
       errorEl.style.display = 'none';
 
+      // ✨ STRICT VALIDATION
       if (!username || !email || !password) {
         errorEl.textContent = 'Please fill in all required fields.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      if (username.length < 3) {
+        errorEl.textContent = 'Username must be at least 3 characters.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        errorEl.textContent = 'Username can only contain letters, numbers, and underscores.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errorEl.textContent = 'Invalid email address.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      // ✨ STRICT PASSWORD RULES
+      const passwordErrors = [];
+      if (password.length < 8) {
+        passwordErrors.push('at least 8 characters');
+      }
+      if (!/[A-Z]/.test(password)) {
+        passwordErrors.push('one uppercase letter (A-Z)');
+      }
+      if (!/[a-z]/.test(password)) {
+        passwordErrors.push('one lowercase letter (a-z)');
+      }
+      if (!/[0-9]/.test(password)) {
+        passwordErrors.push('one number (0-9)');
+      }
+      if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+        passwordErrors.push('one special character (!@#$%^&*)');
+      }
+
+      if (passwordErrors.length > 0) {
+        errorEl.innerHTML = '🔒 Password must contain: <b>' + passwordErrors.join(', ') + '</b>';
         errorEl.style.display = 'block';
         return;
       }
@@ -4142,19 +4259,20 @@
       spinner.style.display = 'inline-block';
 
       try {
-        var res = await fetch(API_BASE + '/auth/signup', {
+        const res = await fetch(API_BASE + '/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, email, password, full_name })
         });
-        var data = await res.json();
+        const data = await res.json();
 
         if (data.ok) {
           localStorage.setItem(LS_USER_TOKEN, data.token);
           localStorage.setItem(LS_USER_DATA, JSON.stringify(data.user));
           state.currentUser = data.user;
+          document.body.classList.remove('auth-required');
 
-          setTimeout(function() {
+          setTimeout(function () {
             closeUserAuth();
             updateUserNav();
             showToast('Welcome to ScamShield, ' + data.user.username + '!', 'ok', 'Account Created');
@@ -4409,7 +4527,7 @@
     // ─── CONFIRMATION MODAL ───────────────────────────────────────────────────
     let _confirmCallback = null;
     // DEBUG: Check if functions exist
-    window._debugAdmin = function() {
+    window._debugAdmin = function () {
       console.log('=== Admin Debug ===');
       console.log('API_ENABLED:', API_ENABLED);
       console.log('API_BASE:', API_BASE);
@@ -4504,7 +4622,14 @@
     }
 
     // ─── START MODULE ────────────────────────────────────────────────────────────
+
     function startModule(id) {
+      // ✨ Require login
+      if (!state.currentUser) {
+        showToast('Please login first to start simulations', 'err', 'Login Required');
+        openUserAuth('login');
+        return;
+      }
       const m = MODULES.find(m => m.id === id);
       state.currentModule = m; state.exposedData = [];
       updateRiskMeter(10); state.risk = Math.max(state.risk, 10); updateNav();
@@ -4965,7 +5090,7 @@
     function fmtDate(d) { return d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
     function diffBadge(d) { return `<span class="badge-${d}">${d}</span>`; }
 
-        function renderRecent(rows) {
+    function renderRecent(rows) {
       const tbody = document.getElementById('tbl-recent-body');
       if (!rows || rows.length === 0) { tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div>📭</div>No activity yet</div></td></tr>`; return; }
       tbody.innerHTML = rows.map(r => {
@@ -5003,7 +5128,7 @@
     </div>`).join('');
     }
 
-        function renderSessions(rows) {
+    function renderSessions(rows) {
       const tbody = document.getElementById('tbl-sessions-body');
       if (!rows || rows.length === 0) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div>👤</div>No sessions yet</div></td></tr>`; return; }
       tbody.innerHTML = rows.map(r => `<tr>
@@ -5017,7 +5142,7 @@
   </tr>`).join('');
     }
 
-     // ══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════
     //  ADMIN DELETE OPERATIONS (Single source of truth)
     // ══════════════════════════════════════════════════════════
 
@@ -5031,9 +5156,9 @@
         danger: true,
         callback: async (confirmed) => {
           if (!confirmed) return;
-          
+
           const token = localStorage.getItem(LS_ADMIN_TOKEN);
-          
+
           if (API_ENABLED && token && token !== 'local-mode') {
             try {
               const res = await fetch(API_BASE + '/admin/session/' + encodeURIComponent(sid), {
@@ -5054,7 +5179,7 @@
               console.warn('API delete failed:', e.message);
             }
           }
-          
+
           const res = localDelSession(sid);
           if (res.ok) showToast('Session deleted (localStorage)', 'ok', 'Session Deleted');
           else showToast('Delete failed', 'err');
@@ -5073,9 +5198,9 @@
         danger: true,
         callback: async (confirmed) => {
           if (!confirmed) return;
-          
+
           const token = localStorage.getItem(LS_ADMIN_TOKEN);
-          
+
           if (API_ENABLED && token && token !== 'local-mode') {
             try {
               const res = await fetch(API_BASE + '/admin/module/' + modId, {
@@ -5096,7 +5221,7 @@
               console.warn('API delete failed:', e.message);
             }
           }
-          
+
           const res = localDelModule(modId);
           if (res.ok) showToast(`${title} data cleared (localStorage)`, 'ok', 'Module Deleted');
           else showToast('Delete failed', 'err');
@@ -5115,9 +5240,9 @@
         danger: true,
         callback: async (confirmed) => {
           if (!confirmed) return;
-          
+
           const token = localStorage.getItem(LS_ADMIN_TOKEN);
-          
+
           if (API_ENABLED && token && token !== 'local-mode') {
             try {
               showToast('Wiping all data from database...', 'warn', 'Wiping');
@@ -5139,7 +5264,7 @@
               console.warn('API wipe failed:', e.message);
             }
           }
-          
+
           const res = localWipeAll();
           if (res.ok) showToast('All data wiped (localStorage)', 'ok', 'Data Wiped');
           else showToast('Wipe failed', 'err');
@@ -5148,14 +5273,14 @@
       });
     }
 
-  
-        // ─── EVENT DELEGATION FOR DYNAMICALLY GENERATED BUTTONS ───
-    document.addEventListener('click', function(e) {
+
+    // ─── EVENT DELEGATION FOR DYNAMICALLY GENERATED BUTTONS ───
+    document.addEventListener('click', function (e) {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
-      
+
       const action = btn.dataset.action;
-      
+
       if (action === 'del-session') {
         const sid = btn.dataset.sid;
         if (sid) delSession(sid);
@@ -5196,6 +5321,11 @@
     let gState = { gameId: null, qIdx: 0, score: 0, correct: 0, wrong: 0, total: 0, answered: false, results: [], timerInterval: null };
 
     function launchGame(gameId) {
+      if (!state.currentUser) {
+        showToast('Please login first to play games', 'err', 'Login Required');
+        openUserAuth('login');
+        return;
+      }
       closeGamesSidebarDirect();
       gState = { gameId, qIdx: 0, score: 0, correct: 0, wrong: 0, total: 0, answered: false, results: [], timerInterval: null };
       const meta = GAMES_META[gameId];
@@ -5635,8 +5765,8 @@
 
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  
-    <!-- ══════════════════════════════════════════════════════════
+
+  <!-- ══════════════════════════════════════════════════════════
        USER LOGIN/SIGNUP MODAL
   ══════════════════════════════════════════════════════════ -->
   <div id="user-auth-overlay" class="user-auth-overlay" style="display:none">
@@ -5650,7 +5780,7 @@
         <button class="user-auth-tab active" id="ua-tab-login" onclick="switchAuthTab('login')">Login</button>
         <button class="user-auth-tab" id="ua-tab-signup" onclick="switchAuthTab('signup')">Sign Up</button>
       </div>
-      
+
       <!-- Login Form -->
       <form id="ua-form-login" onsubmit="event.preventDefault(); handleUserLogin();">
         <div class="user-auth-field">
@@ -5676,7 +5806,8 @@
       <form id="ua-form-signup" onsubmit="event.preventDefault(); handleUserSignup();" style="display:none">
         <div class="user-auth-field">
           <label for="ua-signup-username">Username *</label>
-          <input type="text" id="ua-signup-username" autocomplete="username" placeholder="johndoe" required minlength="3">
+          <input type="text" id="ua-signup-username" autocomplete="username" placeholder="johndoe" required
+            minlength="3">
         </div>
         <div class="user-auth-field">
           <label for="ua-signup-email">Email *</label>
@@ -5688,7 +5819,8 @@
         </div>
         <div class="user-auth-field">
           <label for="ua-signup-password">Password *</label>
-          <input type="password" id="ua-signup-password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6">
+          <input type="password" id="ua-signup-password" autocomplete="new-password" placeholder="At least 6 characters"
+            required minlength="6">
         </div>
         <div id="ua-signup-error" class="user-auth-error" style="display:none"></div>
         <div class="user-auth-actions">
