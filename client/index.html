@@ -42,7 +42,7 @@
       overflow-x: hidden
     }
 
-    /* Dim app when login required */
+    /* Dim app when login required
     body.auth-required .screen.active {
       opacity: 0.3;
       pointer-events: none;
@@ -55,27 +55,10 @@
       opacity: 0.3;
       pointer-events: none;
       user-select: none;
-    }
+    } */
 
-    .auth-lock-message {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 999;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      border-radius: 16px;
-      padding: 24px 32px;
-      text-align: center;
-      max-width: 400px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-      pointer-events: none;
+        .auth-lock-message {
       display: none;
-    }
-
-    body.auth-required .auth-lock-message {
-      display: block;
     }
 
     .auth-lock-message .lock-icon {
@@ -2944,12 +2927,7 @@
 <body>
 
   <!-- TOAST -->
-  <!-- Auth lock message -->
-  <div class="auth-lock-message">
-    <div class="lock-icon">🔐</div>
-    <div class="lock-title">Login Required</div>
-    <div class="lock-subtitle">Please login or create an account to use ScamShield</div>
-  </div>
+  
   <!-- Toast notifications container -->
   <div id="toast-container" class="toast-container"></div>
   <!-- Legacy toast (for compatibility) -->
@@ -4090,13 +4068,11 @@
 
       // ✨ SHOW LOGIN MODAL ON LOAD (only if not logged in)
       // ✨ SHOW LOGIN MODAL ON LOAD (only if not logged in)
+            // ✨ SHOW LOGIN MODAL ON LOAD (only if not logged in)
       if (!state.currentUser) {
         setTimeout(function () {
           openUserAuth('login');
         }, 300);
-
-      } else {
-        document.body.classList.remove('auth-required');
       }
     }
 
