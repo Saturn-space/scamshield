@@ -12,21 +12,21 @@ router.post('/signup', async (req, res) => {
   try {
     const { username, email, password, full_name } = req.body;
 
-    // Validation
+    console.log('📝 Signup attempt:', username, email);
+
     if (!username || !email || !password) {
       return res.status(400).json({ ok: false, err: 'Username, email, and password are required.' });
     }
     if (username.length < 3) {
       return res.status(400).json({ ok: false, err: 'Username must be at least 3 characters.' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ ok: false, err: 'Password must be at least 6 characters.' });
+    if (password.length < 8) {
+      return res.status(400).json({ ok: false, err: 'Password must be at least 8 characters.' });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ ok: false, err: 'Invalid email address.' });
     }
 
-    // Check if user exists
     const existing = await User.findOne({
       $or: [{ username }, { email: email.toLowerCase() }]
     });
@@ -35,16 +35,16 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ ok: false, err: `${field} already exists.` });
     }
 
-    // Create user
     const user = new User({
       username,
       email: email.toLowerCase(),
-      password_hash: password, // pre-save hook will hash it
+      password_hash: password,  // will be hashed by pre-save hook
       full_name: full_name || username
     });
     await user.save();
 
-    // Generate JWT
+    console.log('✅ User created:', user.username, 'hash length:', user.password_hash.length);
+
     const token = jwt.sign(
       { user_id: user._id, username: user.username },
       JWT_SECRET,
@@ -62,8 +62,8 @@ router.post('/signup', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ ok: false, err: 'Failed to create account.' });
+    console.error('❌ Signup error:', error);
+    res.status(500).json({ ok: false, err: 'Failed to create account: ' + error.message });
   }
 });
 
@@ -72,21 +72,33 @@ router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    console.log('🔐 Login attempt:', username, 'password length:', password?.length);
+
     if (!username || !password) {
       return res.status(400).json({ ok: false, err: 'Username and password are required.' });
     }
 
-    // Find user by username or email
+    // Find user by username OR email
     const user = await User.findOne({
-      $or: [{ username }, { email: username.toLowerCase() }]
+      $or: [
+        { username: username },
+        { email: username.toLowerCase() }
+      ]
     });
 
     if (!user) {
+      console.log('❌ User not found:', username);
       return res.status(401).json({ ok: false, err: 'Invalid username or password.' });
     }
 
-    // Check password
+    console.log('✅ User found:', user.username);
+    console.log('🔑 Stored hash starts with:', user.password_hash.substring(0, 10));
+
+    // Compare password
     const isMatch = await user.comparePassword(password);
+
+    console.log('🔍 Password match:', isMatch);
+
     if (!isMatch) {
       return res.status(401).json({ ok: false, err: 'Invalid username or password.' });
     }
@@ -102,6 +114,8 @@ router.post('/login', async (req, res) => {
       { expiresIn: JWT_EXPIRES }
     );
 
+    console.log('✅ Login successful for:', user.username);
+
     res.json({
       ok: true,
       token,
@@ -109,37 +123,12 @@ router.post('/login', async (req, res) => {
         id: user._id,
         username: user.username,
         email: user.email,
-        full_name: user.full_name,
-        total_attempts: user.total_attempts,
-        total_modules_completed: user.total_modules_completed
+        full_name: user.full_name
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ ok: false, err: 'Login failed. Please try again.' });
-  }
-});
-
-// ─── GET /api/auth/me ─────────────────────────────────────────
-router.get('/me', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ ok: false, err: 'No token provided.' });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
-    const user = await User.findById(decoded.user_id).select('-password_hash');
-    if (!user) {
-      return res.status(401).json({ ok: false, err: 'User not found.' });
-    }
-
-    res.json({ ok: true, user });
-  } catch (error) {
-    console.error('Auth check error:', error);
-    res.status(401).json({ ok: false, err: 'Invalid token.' });
+    console.error('❌ Login error:', error);
+    res.status(500).json({ ok: false, err: 'Login failed: ' + error.message });
   }
 });
 
