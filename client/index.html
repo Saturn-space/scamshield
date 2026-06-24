@@ -4998,6 +4998,9 @@
             }),
             fetch(API_BASE + '/admin/sessions', {
               headers: { 'Authorization': 'Bearer ' + token }
+            }),
+            fetch(API_BASE + '/admin/users', {
+              headers: { 'Authorization': 'Bearer ' + token }
             })
           ]);
 
@@ -5005,6 +5008,7 @@
             const stats = await statsRes.json();
             const recent = await recentRes.json();
             const sessions = await sessionsRes.json();
+            const users = await usersRes.json();
 
             // Format data for the existing render functions
             const formatted = {
@@ -5030,6 +5034,7 @@
             renderRecent(formatted.recent);
             renderModuleStats(formatted.byModule);
             renderSessions(formatted.sessions);
+            renderUsers(formatted.users);
 
             // Update the header text to show API mode
             const headerSub = document.querySelector('.admin-header > div > div:last-child');
