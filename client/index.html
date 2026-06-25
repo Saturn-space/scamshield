@@ -3154,244 +3154,290 @@
     }
 
     /* ─── USER DETAIL MODAL ───────────────────────────────────── */
-.ud-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  z-index: 9998;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  animation: fadeIn 0.2s ease;
-}
-.ud-overlay.open {
-  display: flex;
-}
-.ud-modal {
-  background: linear-gradient(135deg, rgba(20, 22, 38, 0.98), rgba(15, 17, 30, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  width: 100%;
-  max-width: 900px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-  animation: slideUp 0.3s ease;
-}
-.ud-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
-}
-.ud-header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.ud-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
-  text-transform: uppercase;
-}
-.ud-user-info {
-  display: flex;
-  flex-direction: column;
-}
-.ud-username {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-}
-.ud-email {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-}
-.ud-close {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-.ud-close:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.3);
-}
-.ud-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.ud-stat {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 12px 14px;
-  text-align: center;
-}
-.ud-stat-num {
-  font-size: 22px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #818cf8, #c084fc);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.ud-stat-lbl {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-top: 2px;
-}
-.ud-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-}
-.ud-body::-webkit-scrollbar {
-  width: 8px;
-}
-.ud-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-.ud-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-.ud-section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 12px;
-}
-.ud-module-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.ud-module-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  transition: all 0.2s;
-}
-.ud-module-row:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-.ud-module-icon {
-  font-size: 24px;
-  width: 40px;
-  text-align: center;
-}
-.ud-module-info {
-  flex: 1;
-  min-width: 0;
-}
-.ud-module-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ud-module-tag {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-top: 2px;
-}
-.ud-module-stats {
-  display: flex;
-  gap: 16px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-}
-.ud-module-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 50px;
-}
-.ud-module-stat-num {
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-}
-.ud-module-stat-lbl {
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
-}
-.ud-module-status {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.ud-status-completed {
-  background: rgba(34, 197, 94, 0.15);
-  color: #86efac;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-.ud-status-notstarted {
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.ud-empty {
-  text-align: center;
-  padding: 40px 20px;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
-}
-.ud-risk-high { color: #fca5a5; }
-.ud-risk-med { color: #fde68a; }
-.ud-risk-low { color: #86efac; }
-@media (max-width: 700px) {
-  .ud-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .ud-module-row {
-    flex-wrap: wrap;
-  }
-  .ud-module-stats {
-    width: 100%;
-    justify-content: space-around;
-  }
-}
+    .ud-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 9998;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .ud-overlay.open {
+      display: flex;
+    }
+
+    .ud-modal {
+      background: linear-gradient(135deg, rgba(20, 22, 38, 0.98), rgba(15, 17, 30, 0.98));
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 900px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+      animation: slideUp 0.3s ease;
+    }
+
+    .ud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .ud-header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .ud-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+    }
+
+    .ud-user-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ud-username {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .ud-email {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .ud-close {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .ud-close:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .ud-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .ud-stat {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+
+    .ud-stat-num {
+      font-size: 22px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .ud-stat-lbl {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 2px;
+    }
+
+    .ud-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+
+    .ud-body::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .ud-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .ud-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    .ud-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .ud-module-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ud-module-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .ud-module-row:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .ud-module-icon {
+      font-size: 24px;
+      width: 40px;
+      text-align: center;
+    }
+
+    .ud-module-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .ud-module-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ud-module-tag {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 2px;
+    }
+
+    .ud-module-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .ud-module-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 50px;
+    }
+
+    .ud-module-stat-num {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .ud-module-stat-lbl {
+      font-size: 9px;
+      color: rgba(255, 255, 255, 0.5);
+      text-transform: uppercase;
+    }
+
+    .ud-module-status {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .ud-status-completed {
+      background: rgba(34, 197, 94, 0.15);
+      color: #86efac;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .ud-status-notstarted {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .ud-empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 14px;
+    }
+
+    .ud-risk-high {
+      color: #fca5a5;
+    }
+
+    .ud-risk-med {
+      color: #fde68a;
+    }
+
+    .ud-risk-low {
+      color: #86efac;
+    }
+
+    @media (max-width: 700px) {
+      .ud-stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .ud-module-row {
+        flex-wrap: wrap;
+      }
+
+      .ud-module-stats {
+        width: 100%;
+        justify-content: space-around;
+      }
+    }
   </style>
 </head>
 
@@ -3900,45 +3946,45 @@
       <div id="game-runner-content"></div>
     </div>
   </div>
-<!-- User Detail Modal -->
-<div id="user-detail-modal" class="ud-overlay" onclick="if(event.target===this)closeUserDetail()">
-  <div class="ud-modal">
-    <div class="ud-header">
-      <div class="ud-header-left">
-        <div class="ud-avatar" id="ud-avatar">U</div>
-        <div class="ud-user-info">
-          <div class="ud-username" id="ud-username">Loading...</div>
-          <div class="ud-email" id="ud-email">—</div>
+  <!-- User Detail Modal -->
+  <div id="user-detail-modal" class="ud-overlay" onclick="if(event.target===this)closeUserDetail()">
+    <div class="ud-modal">
+      <div class="ud-header">
+        <div class="ud-header-left">
+          <div class="ud-avatar" id="ud-avatar">U</div>
+          <div class="ud-user-info">
+            <div class="ud-username" id="ud-username">Loading...</div>
+            <div class="ud-email" id="ud-email">—</div>
+          </div>
+        </div>
+        <button class="ud-close" onclick="closeUserDetail()" aria-label="Close">×</button>
+      </div>
+      <div class="ud-stats">
+        <div class="ud-stat">
+          <div class="ud-stat-num" id="ud-stat-modules">0</div>
+          <div class="ud-stat-lbl">Modules Completed</div>
+        </div>
+        <div class="ud-stat">
+          <div class="ud-stat-num" id="ud-stat-attempts">0</div>
+          <div class="ud-stat-lbl">Total Attempts</div>
+        </div>
+        <div class="ud-stat">
+          <div class="ud-stat-num" id="ud-stat-risk">0</div>
+          <div class="ud-stat-lbl">Avg Risk Score</div>
+        </div>
+        <div class="ud-stat">
+          <div class="ud-stat-num" id="ud-stat-quiz">0%</div>
+          <div class="ud-stat-lbl">Avg Quiz Score</div>
         </div>
       </div>
-      <button class="ud-close" onclick="closeUserDetail()" aria-label="Close">×</button>
-    </div>
-    <div class="ud-stats">
-      <div class="ud-stat">
-        <div class="ud-stat-num" id="ud-stat-modules">0</div>
-        <div class="ud-stat-lbl">Modules Completed</div>
-      </div>
-      <div class="ud-stat">
-        <div class="ud-stat-num" id="ud-stat-attempts">0</div>
-        <div class="ud-stat-lbl">Total Attempts</div>
-      </div>
-      <div class="ud-stat">
-        <div class="ud-stat-num" id="ud-stat-risk">0</div>
-        <div class="ud-stat-lbl">Avg Risk Score</div>
-      </div>
-      <div class="ud-stat">
-        <div class="ud-stat-num" id="ud-stat-quiz">0%</div>
-        <div class="ud-stat-lbl">Avg Quiz Score</div>
-      </div>
-    </div>
-    <div class="ud-body">
-      <div class="ud-section-title">Module Progress (23 Modules)</div>
-      <div class="ud-module-list" id="ud-module-list">
-        <div class="ud-empty">Loading...</div>
+      <div class="ud-body">
+        <div class="ud-section-title">Module Progress (23 Modules)</div>
+        <div class="ud-module-list" id="ud-module-list">
+          <div class="ud-empty">Loading...</div>
+        </div>
       </div>
     </div>
   </div>
-</div>
   <script>
     // ─── CONFIG ────────────────────────────────────────────────────────────────
     const LS_SESSIONS = 'ss_sessions';
@@ -4127,7 +4173,7 @@
         sessions: sessionList
       };
     }
-saveState();
+    saveState();
     // ── Delete helpers ─────────────────────────────────────────────────────────
     function localDelSession(sid) {
       const sessions = getAllSessions(); delete sessions[sid]; lsSet(LS_SESSIONS, sessions);
@@ -5136,7 +5182,7 @@ saveState();
     </div>`).join('');
     }
     // After rendering modules, update UI with loaded state
-updateProgressDisplay();
+    updateProgressDisplay();
 
     // ─── SCAM INFO DATA ─────────────────────────────────────────────────────────
     const SCAM_INFO = {
@@ -5545,64 +5591,64 @@ updateProgressDisplay();
       go('info');
     }
 
-// ─── STATE PERSISTENCE ─────────────────────────────────────
-// ─── STATE PERSISTENCE ─────────────────────────────────────
-const STATE_KEY = 'scamshield_state';
+    // ─── STATE PERSISTENCE ─────────────────────────────────────
+    // ─── STATE PERSISTENCE ─────────────────────────────────────
+    const STATE_KEY = 'scamshield_state';
 
-function saveState() {
-  try {
-    const toSave = {
-      currentUser: state.currentUser,
-      sessionId: state.sessionId,
-      completed: state.completed,
-      risk: state.risk,
-      games_played: state.games_played || [],
-      total_score: state.total_score || 0
-    };
-    localStorage.setItem(STATE_KEY, JSON.stringify(toSave));
-  } catch (e) {
-    console.warn('Failed to save state:', e);
-  }
-}
-
-function loadState() {
-  try {
-    const saved = localStorage.getItem(STATE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.currentUser) state.currentUser = parsed.currentUser;
-      if (parsed.sessionId) state.sessionId = parsed.sessionId;
-      if (parsed.completed) state.completed = parsed.completed;
-      if (parsed.risk !== undefined) state.risk = parsed.risk;
-      if (parsed.games_played) state.games_played = parsed.games_played;
-      if (parsed.total_score !== undefined) state.total_score = parsed.total_score;
+    function saveState() {
+      try {
+        const toSave = {
+          currentUser: state.currentUser,
+          sessionId: state.sessionId,
+          completed: state.completed,
+          risk: state.risk,
+          games_played: state.games_played || [],
+          total_score: state.total_score || 0
+        };
+        localStorage.setItem(STATE_KEY, JSON.stringify(toSave));
+      } catch (e) {
+        console.warn('Failed to save state:', e);
+      }
     }
-  } catch (e) {
-    console.warn('Failed to load state:', e);
-  }
-}
 
-function updateProgressDisplay() {
-  const doneEl = document.getElementById('nav-done');
-  if (doneEl) doneEl.textContent = (state.completed ? state.completed.length : 0) + '/23';
-  
-  const riskEl = document.getElementById('nav-risk');
-  if (riskEl) {
-    const risk = state.risk || 0;
-    riskEl.textContent = 'Risk: ' + risk;
-    riskEl.style.color = risk > 60 ? 'var(--accent)' : risk > 30 ? 'var(--gold)' : 'var(--green)';
-  }
-  
-  if (typeof renderModules === 'function') {
-    renderModules();
-  }
-}
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(STATE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.currentUser) state.currentUser = parsed.currentUser;
+          if (parsed.sessionId) state.sessionId = parsed.sessionId;
+          if (parsed.completed) state.completed = parsed.completed;
+          if (parsed.risk !== undefined) state.risk = parsed.risk;
+          if (parsed.games_played) state.games_played = parsed.games_played;
+          if (parsed.total_score !== undefined) state.total_score = parsed.total_score;
+        }
+      } catch (e) {
+        console.warn('Failed to load state:', e);
+      }
+    }
 
-// Load state on page load
-loadState();
-updateProgressDisplay();
+    function updateProgressDisplay() {
+      const doneEl = document.getElementById('nav-done');
+      if (doneEl) doneEl.textContent = (state.completed ? state.completed.length : 0) + '/23';
 
-// After loadState() restores from localStorage
+      const riskEl = document.getElementById('nav-risk');
+      if (riskEl) {
+        const risk = state.risk || 0;
+        riskEl.textContent = 'Risk: ' + risk;
+        riskEl.style.color = risk > 60 ? 'var(--accent)' : risk > 30 ? 'var(--gold)' : 'var(--green)';
+      }
+
+      if (typeof renderModules === 'function') {
+        renderModules();
+      }
+    }
+
+    // Load state on page load
+    loadState();
+    updateProgressDisplay();
+
+    // After loadState() restores from localStorage
 
     // ─── START MODULE ────────────────────────────────────────────────────────────
 
@@ -6012,7 +6058,7 @@ updateProgressDisplay();
             })
           ]);
 
-                    if (statsRes.ok && recentRes.ok && sessionsRes.ok) {
+          if (statsRes.ok && recentRes.ok && sessionsRes.ok) {
             const stats = await statsRes.json();
             const recent = await recentRes.json();
             const sessions = await sessionsRes.json();
@@ -6085,86 +6131,86 @@ updateProgressDisplay();
     }
 
     // ─── USER DETAIL MODAL ──────────────────────────────────────
-async function openUserDetail(userId) {
-  const modal = document.getElementById('user-detail-modal');
-  modal.classList.add('open');
-  
-  // Reset
-  document.getElementById('ud-username').textContent = 'Loading...';
-  document.getElementById('ud-email').textContent = '—';
-  document.getElementById('ud-avatar').textContent = 'U';
-  document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">Loading...</div>';
-  document.getElementById('ud-stat-modules').textContent = '0';
-  document.getElementById('ud-stat-attempts').textContent = '0';
-  document.getElementById('ud-stat-risk').textContent = '0';
-  document.getElementById('ud-stat-quiz').textContent = '0%';
-  
-  try {
-    const token = localStorage.getItem('ss_admin_token');
-    const res = await fetch(API_BASE + '/admin/user/' + userId + '/attempts', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-    const data = await res.json();
-    
-    if (!data.ok) {
-      document.getElementById('ud-username').textContent = 'Error';
-      document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">' + eh(data.err || 'Failed to load') + '</div>';
-      return;
-    }
-    
-    // Fill user info
-    const u = data.user;
-    document.getElementById('ud-username').textContent = eh(u.username);
-    document.getElementById('ud-email').textContent = eh(u.email);
-    document.getElementById('ud-avatar').textContent = (u.username || 'U').charAt(0).toUpperCase();
-    
-    // Fill stats
-    const s = data.stats;
-    document.getElementById('ud-stat-modules').textContent = s.total_modules_completed;
-    document.getElementById('ud-stat-attempts').textContent = s.total_attempts;
-    document.getElementById('ud-stat-risk').textContent = s.avg_risk;
-    document.getElementById('ud-stat-quiz').textContent = s.avg_quiz_pct + '%';
-    
-    // Render module list (all 23 modules, show not-started ones too)
-    const allModules = [
-      { module_id: 0, title: 'Instant Loan Scam', icon: '💰', tag: 'Financial Fraud', diff: 'high' },
-      { module_id: 1, title: 'Fake Interview Fee', icon: '💼', tag: 'Job Fraud', diff: 'med' },
-      { module_id: 2, title: 'Too-Good Phone Deal', icon: '📱', tag: 'E-Commerce Fraud', diff: 'high' },
-      { module_id: 3, title: 'Fake Gold Coin Investment', icon: '🥇', tag: 'Investment Fraud', diff: 'med' },
-      { module_id: 4, title: 'Lucky Draw Entry Fee', icon: '🎰', tag: 'Lottery Fraud', diff: 'low' },
-      { module_id: 5, title: 'Credit Card Discount', icon: '💳', tag: 'Card Fraud', diff: 'high' },
-      { module_id: 6, title: 'Free Gift Delivery', icon: '🎁', tag: 'Delivery Fraud', diff: 'low' },
-      { module_id: 7, title: 'Reward Points Expiry', icon: '⭐', tag: 'App Fraud', diff: 'med' },
-      { module_id: 8, title: 'Work From Home Scam', icon: '🏠', tag: 'Job Fraud', diff: 'med' },
-      { module_id: 9, title: 'Fake Investment Scheme', icon: '📈', tag: 'Ponzi Scheme', diff: 'high' },
-      { module_id: 10, title: 'Digital Arrest Scam', icon: '👮', tag: 'Impersonation', diff: 'high' },
-      { module_id: 11, title: 'Deepfake Family Emergency', icon: '🤖', tag: 'AI Fraud', diff: 'high' },
-      { module_id: 12, title: 'Bank KYC Verification', icon: '🏦', tag: 'Banking Fraud', diff: 'med' },
-      { module_id: 13, title: 'Instagram Verification', icon: '📸', tag: 'Social Phishing', diff: 'med' },
-      { module_id: 14, title: 'Electricity Bill Scam', icon: '⚡', tag: 'Utility Fraud', diff: 'med' },
-      { module_id: 15, title: 'Income Tax Refund Scam', icon: '💰', tag: 'Identity Theft', diff: 'high' },
-      { module_id: 16, title: 'Corporate Password Reset', icon: '🏢', tag: 'Corporate Phishing', diff: 'high' },
-      { module_id: 17, title: 'SIM Upgrade Scam', icon: '📶', tag: 'Telecom Fraud', diff: 'high' },
-      { module_id: 18, title: 'Scholarship Scam', icon: '🎓', tag: 'Education Fraud', diff: 'med' },
-      { module_id: 19, title: 'Copyright Violation', icon: '📢', tag: 'Social Engineering', diff: 'high' },
-      { module_id: 20, title: 'Customs Parcel Fee', icon: '✈️', tag: 'Delivery Fraud', diff: 'med' },
-      { module_id: 21, title: 'Disaster Donation', icon: '❤️', tag: 'Charity Fraud', diff: 'med' },
-      { module_id: 22, title: 'Free Wi-Fi Login', icon: '📶', tag: 'Credential Theft', diff: 'high' }
-    ];
-    
-    const userModules = {};
-    data.modules.forEach(m => { userModules[m.module_id] = m; });
-    
-    const listHTML = allModules.map(mod => {
-      const userMod = userModules[mod.module_id];
-      const completed = userMod && userMod.submitted > 0;
-      const attempts = userMod ? userMod.attempts : 0;
-      const risk = userMod ? userMod.best_risk : 0;
-      const quiz = userMod ? userMod.best_quiz_pct : 0;
-      
-      const riskClass = risk >= 70 ? 'ud-risk-high' : risk >= 40 ? 'ud-risk-med' : 'ud-risk-low';
-      
-      return `
+    async function openUserDetail(userId) {
+      const modal = document.getElementById('user-detail-modal');
+      modal.classList.add('open');
+
+      // Reset
+      document.getElementById('ud-username').textContent = 'Loading...';
+      document.getElementById('ud-email').textContent = '—';
+      document.getElementById('ud-avatar').textContent = 'U';
+      document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">Loading...</div>';
+      document.getElementById('ud-stat-modules').textContent = '0';
+      document.getElementById('ud-stat-attempts').textContent = '0';
+      document.getElementById('ud-stat-risk').textContent = '0';
+      document.getElementById('ud-stat-quiz').textContent = '0%';
+
+      try {
+        const token = localStorage.getItem('ss_admin_token');
+        const res = await fetch(API_BASE + '/admin/user/' + userId + '/attempts', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+
+        if (!data.ok) {
+          document.getElementById('ud-username').textContent = 'Error';
+          document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">' + eh(data.err || 'Failed to load') + '</div>';
+          return;
+        }
+
+        // Fill user info
+        const u = data.user;
+        document.getElementById('ud-username').textContent = eh(u.username);
+        document.getElementById('ud-email').textContent = eh(u.email);
+        document.getElementById('ud-avatar').textContent = (u.username || 'U').charAt(0).toUpperCase();
+
+        // Fill stats
+        const s = data.stats;
+        document.getElementById('ud-stat-modules').textContent = s.total_modules_completed;
+        document.getElementById('ud-stat-attempts').textContent = s.total_attempts;
+        document.getElementById('ud-stat-risk').textContent = s.avg_risk;
+        document.getElementById('ud-stat-quiz').textContent = s.avg_quiz_pct + '%';
+
+        // Render module list (all 23 modules, show not-started ones too)
+        const allModules = [
+          { module_id: 0, title: 'Instant Loan Scam', icon: '💰', tag: 'Financial Fraud', diff: 'high' },
+          { module_id: 1, title: 'Fake Interview Fee', icon: '💼', tag: 'Job Fraud', diff: 'med' },
+          { module_id: 2, title: 'Too-Good Phone Deal', icon: '📱', tag: 'E-Commerce Fraud', diff: 'high' },
+          { module_id: 3, title: 'Fake Gold Coin Investment', icon: '🥇', tag: 'Investment Fraud', diff: 'med' },
+          { module_id: 4, title: 'Lucky Draw Entry Fee', icon: '🎰', tag: 'Lottery Fraud', diff: 'low' },
+          { module_id: 5, title: 'Credit Card Discount', icon: '💳', tag: 'Card Fraud', diff: 'high' },
+          { module_id: 6, title: 'Free Gift Delivery', icon: '🎁', tag: 'Delivery Fraud', diff: 'low' },
+          { module_id: 7, title: 'Reward Points Expiry', icon: '⭐', tag: 'App Fraud', diff: 'med' },
+          { module_id: 8, title: 'Work From Home Scam', icon: '🏠', tag: 'Job Fraud', diff: 'med' },
+          { module_id: 9, title: 'Fake Investment Scheme', icon: '📈', tag: 'Ponzi Scheme', diff: 'high' },
+          { module_id: 10, title: 'Digital Arrest Scam', icon: '👮', tag: 'Impersonation', diff: 'high' },
+          { module_id: 11, title: 'Deepfake Family Emergency', icon: '🤖', tag: 'AI Fraud', diff: 'high' },
+          { module_id: 12, title: 'Bank KYC Verification', icon: '🏦', tag: 'Banking Fraud', diff: 'med' },
+          { module_id: 13, title: 'Instagram Verification', icon: '📸', tag: 'Social Phishing', diff: 'med' },
+          { module_id: 14, title: 'Electricity Bill Scam', icon: '⚡', tag: 'Utility Fraud', diff: 'med' },
+          { module_id: 15, title: 'Income Tax Refund Scam', icon: '💰', tag: 'Identity Theft', diff: 'high' },
+          { module_id: 16, title: 'Corporate Password Reset', icon: '🏢', tag: 'Corporate Phishing', diff: 'high' },
+          { module_id: 17, title: 'SIM Upgrade Scam', icon: '📶', tag: 'Telecom Fraud', diff: 'high' },
+          { module_id: 18, title: 'Scholarship Scam', icon: '🎓', tag: 'Education Fraud', diff: 'med' },
+          { module_id: 19, title: 'Copyright Violation', icon: '📢', tag: 'Social Engineering', diff: 'high' },
+          { module_id: 20, title: 'Customs Parcel Fee', icon: '✈️', tag: 'Delivery Fraud', diff: 'med' },
+          { module_id: 21, title: 'Disaster Donation', icon: '❤️', tag: 'Charity Fraud', diff: 'med' },
+          { module_id: 22, title: 'Free Wi-Fi Login', icon: '📶', tag: 'Credential Theft', diff: 'high' }
+        ];
+
+        const userModules = {};
+        data.modules.forEach(m => { userModules[m.module_id] = m; });
+
+        const listHTML = allModules.map(mod => {
+          const userMod = userModules[mod.module_id];
+          const completed = userMod && userMod.submitted > 0;
+          const attempts = userMod ? userMod.attempts : 0;
+          const risk = userMod ? userMod.best_risk : 0;
+          const quiz = userMod ? userMod.best_quiz_pct : 0;
+
+          const riskClass = risk >= 70 ? 'ud-risk-high' : risk >= 40 ? 'ud-risk-med' : 'ud-risk-low';
+
+          return `
         <div class="ud-module-row">
           <div class="ud-module-icon">${eh(mod.icon)}</div>
           <div class="ud-module-info">
@@ -6190,27 +6236,27 @@ async function openUserDetail(userId) {
           </div>
         </div>
       `;
-    }).join('');
-    
-    document.getElementById('ud-module-list').innerHTML = listHTML;
-    
-  } catch (err) {
-    console.error('User detail error:', err);
-    document.getElementById('ud-username').textContent = 'Error';
-    document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">Failed to load user details.</div>';
-  }
-}
+        }).join('');
 
-function closeUserDetail() {
-  document.getElementById('user-detail-modal').classList.remove('open');
-}
+        document.getElementById('ud-module-list').innerHTML = listHTML;
 
-// Close modal on Escape key
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    closeUserDetail();
-  }
-});
+      } catch (err) {
+        console.error('User detail error:', err);
+        document.getElementById('ud-username').textContent = 'Error';
+        document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">Failed to load user details.</div>';
+      }
+    }
+
+    function closeUserDetail() {
+      document.getElementById('user-detail-modal').classList.remove('open');
+    }
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        closeUserDetail();
+      }
+    });
 
     function renderAdminStats(t) {
       document.getElementById('as-sessions').textContent = t.total_sessions || 0;
@@ -6278,7 +6324,7 @@ document.addEventListener('keydown', function(e) {
   </tr>`).join('');
     }
 
-        function renderUsers(rows) {
+    function renderUsers(rows) {
       const tbody = document.getElementById('tbl-users-body');
       if (!tbody) {
         console.error('Users tbody not found');
@@ -6981,11 +7027,11 @@ document.addEventListener('keydown', function(e) {
     function updateProgressDisplay() {
   // Update nav bar
   const doneEl = document.getElementById('nav-done');
-  if (doneEl) doneEl.textContent = state.completed.length + '/23';
+  if (doneEl) doneEl.textContent = state.completed.length; // 🟢 Removed the + '/23'
   
   const riskEl = document.getElementById('nav-risk');
   if (riskEl) {
-    riskEl.textContent = 'Risk: ' + state.risk;
+    riskEl.textContent = state.risk; // 🟢 Removed the 'Risk: ' +
     riskEl.style.color = state.risk > 60 ? 'var(--accent)' : state.risk > 30 ? 'var(--gold)' : 'var(--green)';
   }
   
