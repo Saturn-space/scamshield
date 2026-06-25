@@ -3438,6 +3438,196 @@
         justify-content: space-around;
       }
     }
+
+    /* ═══ INFO / DESCRIPTION PAGE BASE STYLES ═══ */
+    .info-page {
+      flex: 1;
+      max-width: 720px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+    .info-back {
+      color: var(--text3);
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .info-back:hover { color: var(--text); }
+    .info-hero {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .info-icon-big {
+      font-size: 52px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .info-hero-text { flex: 1; }
+    .info-tag {
+      display: inline-block;
+      background: rgba(239,68,68,.12);
+      color: #fca5a5;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(239,68,68,.25);
+    }
+    .info-title {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      line-height: 1.25;
+    }
+    .info-subtitle {
+      font-size: 15px;
+      color: var(--text2);
+      line-height: 1.65;
+    }
+    .info-section {
+      margin-bottom: 28px;
+    }
+    .info-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .info-what {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      font-size: 14px;
+      color: var(--text2);
+      line-height: 1.75;
+    }
+    .info-what b { color: var(--text); }
+    .info-scenario {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent2);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    }
+    .info-scenario-num {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--accent2);
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .info-scenario-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .info-scenario-body {
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.65;
+    }
+    .info-stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px,1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .info-stat {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .info-stat-num {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .info-stat-lbl {
+      font-size: 11px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    .info-warning-box {
+      background: rgba(239,68,68,.06);
+      border: 1px solid rgba(239,68,68,.2);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.6;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .info-warning-icon { color: #fca5a5; flex-shrink: 0; font-size: 15px; }
+    .info-cta-area {
+      margin-top: 36px;
+      background: linear-gradient(135deg, rgba(239,68,68,.08), rgba(249,115,22,.08));
+      border: 1px solid rgba(239,68,68,.25);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+    }
+    .info-cta-heading {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .info-cta-sub {
+      font-size: 13px;
+      color: var(--text2);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .info-cta-btn {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 36px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: opacity .15s;
+      text-decoration: none;
+    }
+    .info-cta-btn:hover { opacity: .88; }
+    .info-diff-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 
@@ -5512,17 +5702,91 @@
     };
 
     // ─── SHOW INFO PAGE ─────────────────────────────────────────────────────────
-    function showInfoPage(id) {
+// ─── PER-MODULE THEME PALETTE ────────────────────────────────────────────────
+    // Each entry: { primary, secondary, accent, glow, animation, particle, heroBg }
+    const MODULE_THEMES = {
+      0:  { primary:'#f59e0b', secondary:'#d97706', accent:'#fbbf24', glow:'rgba(245,158,11,.35)', animation:'anim-money',   particle:'💸', heroBg:'linear-gradient(135deg,rgba(245,158,11,.12),rgba(217,119,6,.06))' },
+      1:  { primary:'#6366f1', secondary:'#4f46e5', accent:'#818cf8', glow:'rgba(99,102,241,.35)',  animation:'anim-pulse',   particle:'💼', heroBg:'linear-gradient(135deg,rgba(99,102,241,.12),rgba(79,70,229,.06))' },
+      2:  { primary:'#ec4899', secondary:'#db2777', accent:'#f9a8d4', glow:'rgba(236,72,153,.35)',  animation:'anim-shake',   particle:'📱', heroBg:'linear-gradient(135deg,rgba(236,72,153,.12),rgba(219,39,119,.06))' },
+      3:  { primary:'#f59e0b', secondary:'#92400e', accent:'#fcd34d', glow:'rgba(245,158,11,.4)',   animation:'anim-shimmer', particle:'🥇', heroBg:'linear-gradient(135deg,rgba(245,158,11,.15),rgba(146,64,14,.06))' },
+      4:  { primary:'#8b5cf6', secondary:'#7c3aed', accent:'#c4b5fd', glow:'rgba(139,92,246,.35)',  animation:'anim-spin',    particle:'🎰', heroBg:'linear-gradient(135deg,rgba(139,92,246,.12),rgba(124,58,237,.06))' },
+      5:  { primary:'#ef4444', secondary:'#b91c1c', accent:'#fca5a5', glow:'rgba(239,68,68,.4)',    animation:'anim-zap',     particle:'💳', heroBg:'linear-gradient(135deg,rgba(239,68,68,.12),rgba(185,28,28,.06))' },
+      6:  { primary:'#10b981', secondary:'#059669', accent:'#6ee7b7', glow:'rgba(16,185,129,.35)',  animation:'anim-bounce',  particle:'🎁', heroBg:'linear-gradient(135deg,rgba(16,185,129,.12),rgba(5,150,105,.06))' },
+      7:  { primary:'#f97316', secondary:'#c2410c', accent:'#fdba74', glow:'rgba(249,115,22,.35)',  animation:'anim-glitch',  particle:'⭐', heroBg:'linear-gradient(135deg,rgba(249,115,22,.12),rgba(194,65,12,.06))' },
+      8:  { primary:'#14b8a6', secondary:'#0d9488', accent:'#5eead4', glow:'rgba(20,184,166,.35)',  animation:'anim-type',    particle:'🏠', heroBg:'linear-gradient(135deg,rgba(20,184,166,.12),rgba(13,148,136,.06))' },
+      9:  { primary:'#22c55e', secondary:'#15803d', accent:'#86efac', glow:'rgba(34,197,94,.35)',   animation:'anim-grow',    particle:'📈', heroBg:'linear-gradient(135deg,rgba(34,197,94,.12),rgba(21,128,61,.06))' },
+      10: { primary:'#ef4444', secondary:'#7f1d1d', accent:'#fca5a5', glow:'rgba(239,68,68,.5)',    animation:'anim-alarm',   particle:'👮', heroBg:'linear-gradient(135deg,rgba(239,68,68,.18),rgba(127,29,29,.1))' },
+      11: { primary:'#a855f7', secondary:'#7e22ce', accent:'#d8b4fe', glow:'rgba(168,85,247,.4)',   animation:'anim-wave',    particle:'🤖', heroBg:'linear-gradient(135deg,rgba(168,85,247,.14),rgba(126,34,206,.06))' },
+      12: { primary:'#3b82f6', secondary:'#1d4ed8', accent:'#93c5fd', glow:'rgba(59,130,246,.35)',  animation:'anim-scan',    particle:'🏦', heroBg:'linear-gradient(135deg,rgba(59,130,246,.12),rgba(29,78,216,.06))' },
+      13: { primary:'#ec4899', secondary:'#9d174d', accent:'#fbcfe8', glow:'rgba(236,72,153,.35)',  animation:'anim-flash',   particle:'📸', heroBg:'linear-gradient(135deg,rgba(236,72,153,.12),rgba(157,23,77,.06))' },
+      14: { primary:'#f59e0b', secondary:'#b45309', accent:'#fcd34d', glow:'rgba(245,158,11,.38)',  animation:'anim-electric',particle:'⚡', heroBg:'linear-gradient(135deg,rgba(245,158,11,.13),rgba(180,83,9,.06))' },
+      15: { primary:'#06b6d4', secondary:'#0e7490', accent:'#67e8f9', glow:'rgba(6,182,212,.35)',   animation:'anim-slide',   particle:'💰', heroBg:'linear-gradient(135deg,rgba(6,182,212,.12),rgba(14,116,144,.06))' },
+      16: { primary:'#6366f1', secondary:'#312e81', accent:'#a5b4fc', glow:'rgba(99,102,241,.4)',   animation:'anim-glitch',  particle:'🏢', heroBg:'linear-gradient(135deg,rgba(99,102,241,.14),rgba(49,46,129,.07))' },
+      17: { primary:'#f97316', secondary:'#7c2d12', accent:'#fed7aa', glow:'rgba(249,115,22,.38)',  animation:'anim-signal',  particle:'📶', heroBg:'linear-gradient(135deg,rgba(249,115,22,.13),rgba(124,45,18,.06))' },
+      18: { primary:'#8b5cf6', secondary:'#4c1d95', accent:'#ddd6fe', glow:'rgba(139,92,246,.35)',  animation:'anim-float',   particle:'🎓', heroBg:'linear-gradient(135deg,rgba(139,92,246,.12),rgba(76,29,149,.06))' },
+      19: { primary:'#3b82f6', secondary:'#1e3a8a', accent:'#bfdbfe', glow:'rgba(59,130,246,.35)',  animation:'anim-ping',    particle:'📢', heroBg:'linear-gradient(135deg,rgba(59,130,246,.12),rgba(30,58,138,.06))' },
+      20: { primary:'#14b8a6', secondary:'#134e4a', accent:'#99f6e4', glow:'rgba(20,184,166,.35)',  animation:'anim-bounce',  particle:'✈️', heroBg:'linear-gradient(135deg,rgba(20,184,166,.12),rgba(19,78,74,.06))' },
+      21: { primary:'#f43f5e', secondary:'#881337', accent:'#fda4af', glow:'rgba(244,63,94,.38)',   animation:'anim-pulse',   particle:'❤️', heroBg:'linear-gradient(135deg,rgba(244,63,94,.13),rgba(136,19,55,.06))' },
+      22: { primary:'#06b6d4', secondary:'#164e63', accent:'#a5f3fc', glow:'rgba(6,182,212,.38)',   animation:'anim-scan',    particle:'📶', heroBg:'linear-gradient(135deg,rgba(6,182,212,.13),rgba(22,78,99,.06))' },
+    };
+
+   function showInfoPage(id) {
       const m = MODULES.find(x => x.id === id);
       const info = SCAM_INFO[id];
       if (!info) { startModule(id); return; }
 
+      const th = MODULE_THEMES[id] || MODULE_THEMES[1];
+
       document.getElementById('info-risk-display').textContent = state.risk;
       document.getElementById('info-done-display').textContent = state.completed.length;
 
-      const diffLabel = m.diff === 'high' ? 'High Risk' : m.diff === 'med' ? 'Medium Risk' : 'Low Risk';
-      const diffColor = m.diff === 'high' ? 'rgba(239,68,68,.15)' : m.diff === 'med' ? 'rgba(251,191,36,.15)' : 'rgba(34,197,94,.15)';
-      const diffTextColor = m.diff === 'high' ? '#fca5a5' : m.diff === 'med' ? '#fde68a' : '#86efac';
+      // Inject per-module CSS custom props + animation keyframes
+      let styleEl = document.getElementById('module-theme-style');
+      if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'module-theme-style'; document.head.appendChild(styleEl); }
+      styleEl.textContent = `
+        #screen-info { --mt-primary:${th.primary}; --mt-secondary:${th.secondary}; --mt-accent:${th.accent}; --mt-glow:${th.glow}; }
+        #screen-info .info-tag { background:${th.primary}22; color:${th.accent}; border-color:${th.primary}44; }
+        #screen-info .info-section-label { color:${th.accent}; border-color:${th.primary}33; }
+        #screen-info .info-what { border-color:${th.primary}33; border-left:3px solid ${th.primary}; }
+        #screen-info .info-stat { border-color:${th.primary}33; }
+        #screen-info .info-stat-num { color:${th.primary}; }
+        #screen-info .info-stat:hover { box-shadow:0 0 18px ${th.glow}; transform:translateY(-3px); border-color:${th.primary}77; }
+        #screen-info .info-scenario { border-left-color:${th.primary}; }
+        #screen-info .info-scenario-num { color:${th.primary}; }
+        #screen-info .info-scenario:hover { box-shadow:0 4px 20px ${th.glow}; transform:translateX(4px); }
+        #screen-info .info-warning-box { background:${th.primary}0d; border-color:${th.primary}33; }
+        #screen-info .info-warning-icon { color:${th.accent}; }
+        #screen-info .info-hero-banner { background:${th.heroBg}; border-color:${th.primary}33; }
+        #screen-info .info-cta-area { background:${th.heroBg}; border-color:${th.primary}44; }
+        #screen-info .info-cta-btn { background:linear-gradient(135deg,${th.primary},${th.secondary}); box-shadow:0 4px 20px ${th.glow}; }
+        #screen-info .info-cta-btn:hover { box-shadow:0 6px 30px ${th.glow}; transform:translateY(-2px); }
+        #screen-info .module-nav-accent { background:${th.primary}; }
+        #screen-info .info-icon-wrap { background:${th.heroBg}; border:2px solid ${th.primary}44; box-shadow:0 0 24px ${th.glow}; animation:${th.animation} 2.5s infinite; }
+        #screen-info .info-particle { color:${th.primary}; }
+        #screen-info .info-title span { background:linear-gradient(90deg,${th.primary},${th.accent}); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        @keyframes anim-money  { 0%,100%{transform:translateY(0) rotate(0deg)} 25%{transform:translateY(-6px) rotate(-4deg)} 75%{transform:translateY(-3px) rotate(4deg)} }
+        @keyframes anim-pulse  { 0%,100%{transform:scale(1);box-shadow:0 0 24px ${th.glow}} 50%{transform:scale(1.08);box-shadow:0 0 36px ${th.glow}} }
+        @keyframes anim-shake  { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-6deg)} 40%{transform:rotate(6deg)} 60%{transform:rotate(-4deg)} 80%{transform:rotate(4deg)} }
+        @keyframes anim-shimmer{ 0%,100%{box-shadow:0 0 10px ${th.glow}} 50%{box-shadow:0 0 40px ${th.glow},0 0 60px ${th.glow}} }
+        @keyframes anim-spin   { 0%{transform:rotate(0deg) scale(1)} 50%{transform:rotate(180deg) scale(1.1)} 100%{transform:rotate(360deg) scale(1)} }
+        @keyframes anim-zap    { 0%,90%,100%{transform:scale(1)} 95%{transform:scale(1.15) skew(-3deg)} }
+        @keyframes anim-bounce { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-10px)} 60%{transform:translateY(-5px)} }
+        @keyframes anim-glitch { 0%,100%{transform:none;filter:none} 92%{transform:skewX(0)} 93%{transform:skewX(-4deg);filter:hue-rotate(40deg)} 94%{transform:skewX(4deg)} 95%{transform:none;filter:none} }
+        @keyframes anim-type   { 0%,100%{opacity:1} 50%{opacity:.6} }
+        @keyframes anim-grow   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+        @keyframes anim-alarm  { 0%,100%{box-shadow:0 0 16px ${th.glow}} 25%{box-shadow:0 0 40px ${th.glow},0 0 0 6px ${th.primary}22} 50%{box-shadow:0 0 16px ${th.glow}} 75%{box-shadow:0 0 40px ${th.glow},0 0 0 10px ${th.primary}11} }
+        @keyframes anim-wave   { 0%,100%{transform:translateY(0) scale(1)} 33%{transform:translateY(-8px) scale(1.05)} 66%{transform:translateY(-4px) scale(0.97)} }
+        @keyframes anim-scan   { 0%,100%{box-shadow:0 0 10px ${th.glow}} 50%{box-shadow:0 0 30px ${th.glow},inset 0 0 20px ${th.primary}11} }
+        @keyframes anim-flash  { 0%,100%{opacity:1} 48%,52%{opacity:.7;filter:brightness(1.3)} 50%{opacity:1;filter:brightness(1.6)} }
+        @keyframes anim-electric{ 0%,100%{transform:none} 10%{transform:skewX(2deg)} 20%{transform:skewX(-2deg)} 30%,100%{transform:none} }
+        @keyframes anim-slide  { 0%,100%{transform:translateX(0)} 50%{transform:translateX(5px)} }
+        @keyframes anim-signal { 0%,100%{transform:scale(1)} 25%{transform:scale(1.06)} 75%{transform:scale(0.95)} }
+        @keyframes anim-float  { 0%,100%{transform:translateY(0) rotate(0)} 50%{transform:translateY(-8px) rotate(3deg)} }
+        @keyframes anim-ping   { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:.8} }
+        .info-stat, .info-scenario, .info-warning-box { transition:all .2s ease; }
+      `;
+
+      const diffLabel = m.diff === 'high' ? '🔴 High Risk' : m.diff === 'med' ? '🟡 Medium Risk' : '🟢 Low Risk';
 
       const statsHTML = info.stats.map(s => `
         <div class="info-stat">
@@ -5532,8 +5796,8 @@
 
       const scenariosHTML = info.scenarios.map((s, i) => `
         <div class="info-scenario">
-          <div class="info-scenario-num">Real-Life Case ${i + 1}</div>
-          <div class="info-scenario-title">📌 ${eh(s.title)}</div>
+          <div class="info-scenario-num">📍 Real-Life Case ${i + 1}</div>
+          <div class="info-scenario-title">${eh(s.title)}</div>
           <div class="info-scenario-body">${eh(s.body)}</div>
         </div>`).join('');
 
@@ -5545,15 +5809,18 @@
 
       document.getElementById('info-content').innerHTML = `
         <div class="info-back" onclick="goHome()">← Back to Modules</div>
-        <div class="info-hero">
-          <div class="info-icon-big">${eh(m.icon)}</div>
-          <div class="info-hero-text">
-            <div>
-              <div class="info-tag">${eh(m.tag)}</div>
-              <span class="info-diff-badge" style="background:${diffColor};color:${diffTextColor}">${diffLabel}</span>
+
+        <div class="info-hero-banner" style="border-radius:18px;padding:28px 24px;margin-bottom:28px;border:1px solid;">
+          <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+            <div class="info-icon-wrap" style="width:80px;height:80px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:40px;flex-shrink:0;">${eh(m.icon)}</div>
+            <div style="flex:1;min-width:200px;">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">
+                <span class="info-tag">${eh(m.tag)}</span>
+                <span style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:${m.diff==='high'?'rgba(239,68,68,.15)':m.diff==='med'?'rgba(251,191,36,.15)':'rgba(34,197,94,.15)'};color:${m.diff==='high'?'#fca5a5':m.diff==='med'?'#fde68a':'#86efac'}">${eh(diffLabel)}</span>
+              </div>
+              <div class="info-title" style="margin-bottom:8px;"><span>${eh(m.title)}</span></div>
+              <div class="info-subtitle">${eh(m.desc)}</div>
             </div>
-            <div class="info-title">${eh(m.title)}</div>
-            <div class="info-subtitle">${eh(m.desc)}</div>
           </div>
         </div>
 
@@ -5577,15 +5844,17 @@
           ${warningsHTML}
         </div>
 
-        <div class="info-cta-area">
-          <div class="info-cta-heading">Ready to Test Your Awareness?</div>
-          <div class="info-cta-sub">
-            You've learned how this scam works and seen real-life cases.<br>
-            Now experience the simulation — try to spot the red flags before clicking submit.
+        <div class="info-cta-area" style="margin-top:36px;border-radius:18px;padding:28px;text-align:center;border:1px solid;">
+          <div style="font-size:36px;margin-bottom:10px;">${th.particle}</div>
+          <div class="info-cta-heading" style="font-size:20px;font-weight:700;margin-bottom:10px;">Ready to Test Your Awareness?</div>
+          <div class="info-cta-sub" style="font-size:14px;color:var(--text2);line-height:1.65;margin-bottom:24px;">
+            You've studied how <b style="color:var(--text)">${eh(m.title)}</b> works and seen real-life victims.<br>
+            Now enter the simulation — spot the red flags before you submit.
           </div>
-          <button class="info-cta-btn" onclick="startModule(${id})">
+          <button class="info-cta-btn" onclick="startModule(${id})" style="border:none;padding:15px 40px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;font-family:var(--font);color:#fff;transition:all .2s;">
             🚨 Enter the Simulation →
           </button>
+          <div style="margin-top:14px;font-size:12px;color:var(--text3);">No real data at risk · Educational simulation only</div>
         </div>
       `;
       go('info');
@@ -5671,28 +5940,501 @@
       logAttempt({ risk_score: 10 });
     }
 
+   // ─── REALISTIC SIMULATION RENDERER ──────────────────────────────────────────
     function renderScamPage(m) {
-      const isHigh = m.diff === 'high';
-      document.getElementById('scam-render').innerHTML = `
-    <div class="scam-site">
-      <div class="scam-topbar">
-        <span class="scam-dot" aria-hidden="true"></span><span class="scam-dot" aria-hidden="true"></span><span class="scam-dot" aria-hidden="true"></span>
-        <div class="scam-url">🔒 ${eh(m.url)}</div>
-      </div>
-      ${isHigh ? `<div class="timer-box">⏰ OFFER EXPIRES IN <span id="scam-timer">09:59</span></div>` : ''}
-      <div class="scam-content">
-        <div class="scam-header">
-          <div class="scam-badge">${eh(m.badge)}</div>
-          <div class="scam-title">${eh(m.amountLabel)}</div>
-          <div class="scam-amount">${eh(m.amount)}</div>
-        </div>
-        <div class="scam-fee-box"><div>${eh(m.fee)}</div><div style="font-size:11px;color:#92400e;margin-top:4px">${eh(m.feeNote)}</div></div>
-        <div class="scam-form">${m.fields.map((f, i) => `<div class="field-wrap"><input class="scam-input" id="field-${i}" type="${eh(f.t)}" placeholder="${eh(f.p)}" aria-label="${eh(f.p)}" oninput="onFieldInput(${i})" autocomplete="off" /><span class="field-error" id="ferr-${i}" role="alert"></span></div>`).join('')}</div>
-        <button class="scam-submit" onclick="submitScam()">SUBMIT & PROCEED →</button>
-        <div class="scam-trust"><span aria-hidden="true">🔒 Secure</span><span aria-hidden="true">✓ Verified</span><span aria-hidden="true">🏛 RBI Certified</span></div>
-      </div>
-    </div>`;
-      if (isHigh) startTimer();
+      const id = m.id;
+      let html = '';
+
+      // Helper: standard form fields
+      function fields(extraClass='') {
+        return m.fields.map((f, i) => `
+          <div class="field-wrap">
+            <label style="font-size:12px;font-weight:600;color:#555;margin-bottom:4px;display:block">${f.p}</label>
+            <input class="scam-input ${extraClass}" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off" />
+            <span class="field-error" id="ferr-${i}"></span>
+          </div>`).join('');
+      }
+
+      // ── MODULE 0: Instant Loan App ────────────────────────────────────────────
+      if (id === 0) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:18px;overflow:hidden;max-width:400px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:#1a5276;padding:6px 16px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#fff">
+            <span>9:41 AM</span><span>📶 Jio  🔋85%</span>
+          </div>
+          <div style="background:linear-gradient(135deg,#1a5276,#2980b9);padding:20px;text-align:center;color:#fff">
+            <div style="font-size:28px;margin-bottom:4px">💰</div>
+            <div style="font-size:20px;font-weight:800;letter-spacing:.5px">FastCash Loan</div>
+            <div style="font-size:11px;opacity:.8;margin-top:2px">Instant Approval · No Branch Visit</div>
+          </div>
+          <div style="background:#e8f5e9;border-bottom:3px solid #2e7d32;padding:16px;text-align:center">
+            <div style="font-size:11px;font-weight:700;color:#1b5e20;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">✅ PRE-APPROVED OFFER</div>
+            <div style="font-size:32px;font-weight:900;color:#1b5e20">${m.amount}</div>
+            <div style="font-size:13px;color:#2e7d32;margin-top:4px">Personal Loan • 12 months • 0% processing*</div>
+          </div>
+          <div style="background:#fff3e0;padding:10px 16px;text-align:center;border-bottom:1px solid #ffe0b2;font-size:13px;color:#e65100;font-weight:600">
+            ⏰ Offer reserved for you! Expires in <span id="scam-timer" style="font-size:15px;font-weight:800">09:59</span>
+          </div>
+          <div style="padding:16px;display:flex;gap:8px;background:#f8f9fa;border-bottom:1px solid #e9ecef">
+            <div style="flex:1;background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #ddd">
+              <div style="font-size:16px;font-weight:700;color:#1a5276">1.2%</div><div style="font-size:10px;color:#888;margin-top:2px">Monthly Interest</div>
+            </div>
+            <div style="flex:1;background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #ddd">
+              <div style="font-size:16px;font-weight:700;color:#1a5276">12 Mo</div><div style="font-size:10px;color:#888;margin-top:2px">Tenure</div>
+            </div>
+            <div style="flex:1;background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #ddd">
+              <div style="font-size:16px;font-weight:700;color:#e53935">₹2,000</div><div style="font-size:10px;color:#888;margin-top:2px">Processing Fee*</div>
+            </div>
+          </div>
+          <div style="padding:20px">
+            <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eee">📋 Complete KYC to Disburse Loan</div>
+            <div class="scam-form" style="gap:12px">${fields()}</div>
+            <div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:12px;color:#e65100">
+              * Pay ₹2,000 processing fee via card to release funds directly to your account within 10 minutes
+            </div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#1a5276,#2980b9);border-radius:10px;padding:14px;font-size:15px;letter-spacing:.3px">Apply & Release Funds →</button>
+            <div class="scam-trust" style="margin-top:14px;font-size:11px;color:#888;display:flex;justify-content:center;gap:16px">
+              <span>🏦 RBI Licensed</span><span>🔒 256-bit SSL</span><span>✅ Instant Disbursal</span>
+            </div>
+            <div style="margin-top:10px;text-align:center;font-size:10px;color:#bbb">fastloan-india.co.in • fastcash@loanhelp.in</div>
+          </div>
+        </div>`;
+        startTimer();
+
+      // ── MODULE 1: Fake Job Portal ─────────────────────────────────────────────
+      } else if (id === 1) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:460px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:#0a66c2;padding:14px 20px;display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px">💼</div>
+            <div>
+              <div style="color:#fff;font-size:15px;font-weight:700">CyberHire India</div>
+              <div style="color:#a8d0f0;font-size:11px">Verified Recruitment Portal</div>
+            </div>
+            <div style="margin-left:auto;background:#fff;color:#0a66c2;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px">HIRING NOW</div>
+          </div>
+          <div style="background:#f3f9ff;border-bottom:1px solid #dce6f1;padding:16px 20px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <div style="font-size:18px;font-weight:700;color:#0a66c2">Cyber Security Analyst</div>
+                <div style="font-size:13px;color:#555;margin-top:4px">TechGuard Solutions Pvt. Ltd.</div>
+                <div style="font-size:12px;color:#888;margin-top:4px">📍 Remote / Bengaluru · Full-Time</div>
+              </div>
+              <div style="background:#e8f5e9;border:1px solid #c8e6c9;border-radius:8px;padding:8px 12px;text-align:center">
+                <div style="font-size:16px;font-weight:800;color:#2e7d32">₹12 LPA</div><div style="font-size:10px;color:#2e7d32">CTC</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:20px">
+            <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px">
+              <span style="font-size:18px">🎉</span>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:#f57f17">You have been shortlisted!</div>
+                <div style="font-size:12px;color:#8d6e63;margin-top:2px">Complete registration to confirm your interview slot. Limited seats available.</div>
+              </div>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:12px">Application Form</div>
+            <div class="scam-form">${fields()}</div>
+            <div style="background:#fce4ec;border:1px solid #f48fb1;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:12px;color:#880e4f">
+              🔒 ₹200 refundable registration fee secures your interview slot. Refunded at joining.
+            </div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#0a66c2,#0d47a1);border-radius:8px">Confirm My Interview Slot →</button>
+            <div style="text-align:center;margin-top:10px;font-size:11px;color:#aaa">hiring-cyberjobs.in · jobs@techguardindia.co.in</div>
+          </div>
+        </div>`;
+
+      // ── MODULE 2: Fake Flash Sale ──────────────────────────────────────────────
+      } else if (id === 2) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#ff6f00,#f57c00);padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
+            <div style="color:#fff;font-size:18px;font-weight:800">🛒 ShopFast India</div>
+            <div style="background:#fff;color:#f57c00;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px">FLASH SALE</div>
+          </div>
+          <div style="background:#b71c1c;color:#fff;text-align:center;padding:10px;font-size:14px;font-weight:600;animation:blink 1s infinite">
+            ⚡ FLASH SALE ENDS IN <span id="scam-timer" style="font-size:16px;font-weight:800;font-family:monospace">09:59</span>
+          </div>
+          <div style="padding:20px">
+            <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
+              <div style="width:90px;height:90px;background:#f5f5f5;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0">📱</div>
+              <div style="flex:1">
+                <div style="font-size:16px;font-weight:700;color:#111">Apple iPhone 16 Pro</div>
+                <div style="margin-top:8px;display:flex;align-items:baseline;gap:8px">
+                  <span style="font-size:24px;font-weight:800;color:#c62828">₹2,999</span>
+                  <span style="font-size:13px;color:#aaa;text-decoration:line-through">₹1,39,900</span>
+                </div>
+                <div style="background:#e8f5e9;display:inline-block;border-radius:4px;padding:2px 8px;font-size:11px;color:#2e7d32;font-weight:700;margin-top:4px">98% OFF</div>
+              </div>
+            </div>
+            <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 14px;font-size:12px;color:#e65100;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+              <span style="font-size:16px">🔥</span><span><b>Only 3 units left!</b> 1,247 people are viewing this item</span>
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#ff6f00,#f57c00);border-radius:8px;margin-top:8px">Buy Now — Reserve My iPhone →</button>
+          </div>
+        </div>`;
+        startTimer();
+
+      // ── MODULE 3: Fake Gold Investment ────────────────────────────────────────
+      } else if (id === 3) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#7d5a00,#c9960c);padding:18px;text-align:center;color:#fff">
+            <div style="font-size:36px">🥇</div>
+            <div style="font-size:20px;font-weight:800;letter-spacing:.5px">GoldVault India</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Certified · Hallmarked · Insured</div>
+          </div>
+          <div style="background:#fffde7;border-bottom:2px solid #ffc107;padding:16px;text-align:center">
+            <div style="font-size:11px;font-weight:700;color:#856404;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">🏅 BIS Hallmarked 24K Gold Coin</div>
+            <div style="display:flex;justify-content:center;align-items:baseline;gap:10px;margin:8px 0">
+              <span style="font-size:28px;font-weight:900;color:#7d5a00">₹4,999</span>
+              <span style="font-size:14px;color:#aaa;text-decoration:line-through">₹74,850</span>
+            </div>
+            <div style="background:#ffc107;display:inline-block;border-radius:4px;padding:3px 10px;font-size:12px;color:#fff;font-weight:700;margin-top:6px">LIMITED STOCK — 7 UNITS ONLY</div>
+          </div>
+          <div style="padding:20px">
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#7d5a00,#c9960c);border-radius:8px;margin-top:4px">Order Now — Claim Offer →</button>
+            <div style="margin-top:10px;text-align:center;font-size:10px;color:#bbb">goldcoin-offer24k.com</div>
+          </div>
+        </div>`;
+
+      // ── MODULE 4: Lottery SMS ──────────────────────────────────────────────────
+      } else if (id === 4) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:400px;width:100%">
+          <div style="background:#1a1a2e;border-radius:40px;padding:16px;box-shadow:0 24px 64px rgba(0,0,0,.7);border:3px solid #333">
+            <div style="background:#000;border-radius:28px;overflow:hidden">
+              <div style="background:#111;padding:10px 20px;display:flex;justify-content:space-between;font-size:11px;color:#fff">
+                <span style="font-weight:600">9:41</span><span>📶 ● ● ○  🔋</span>
+              </div>
+              <div style="background:#1c1c1e;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #333">
+                <div style="width:36px;height:36px;background:#48d1cc;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff">NL</div>
+                <div>
+                  <div style="color:#fff;font-size:14px;font-weight:600">VM-NATIONALLOTTO</div>
+                  <div style="color:#8e8e93;font-size:11px">National Lottery Board of India</div>
+                </div>
+              </div>
+              <div style="background:#000;padding:16px;min-height:200px">
+                <div style="background:#1c1c1e;border-radius:18px 18px 18px 4px;padding:14px 16px;margin-bottom:8px;max-width:90%">
+                  <div style="color:#fff;font-size:13px;line-height:1.7">
+                    🏆 <b style="color:#ffd700">CONGRATULATIONS!</b><br><br>
+                    Your mobile number has been selected as the <b style="color:#ffd700">LUCKY WINNER</b> of the <b>National Digital Lottery 2025</b>.<br><br>
+                    Prize Amount: <span style="color:#4caf50;font-size:16px;font-weight:800">₹5,00,000</span><br><br>
+                    To claim: Pay ₹${m.amount} processing fee and submit KYC below.<br><br>
+                    <span style="color:#ff6b6b;font-size:11px">⚠ Claim expires in 24 hours</span>
+                  </div>
+                </div>
+                <div style="background:#1a1a2e;border-radius:12px;padding:16px;margin-top:16px;border:1px solid #333">
+                  <div style="color:#ffd700;font-size:13px;font-weight:700;margin-bottom:12px;text-align:center">🏆 CLAIM YOUR PRIZE</div>
+                  <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                    <div class="field-wrap">
+                      <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                        style="background:#2c2c3e;border:1px solid #444;color:#fff;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                      <span class="field-error" id="ferr-${i}"></span>
+                    </div>`).join('')}
+                  </div>
+                  <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:8px">CLAIM ₹5,00,000 NOW</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      // ── MODULE 5: Fake Bank Card Phishing ─────────────────────────────────────
+      } else if (id === 5) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:14px 20px;display:flex;align-items:center;gap:12px">
+            <div style="background:#fff;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:20px">🏦</div>
+            <div style="color:#fff">
+              <div style="font-size:15px;font-weight:700">HDFC Bank NetBanking</div>
+              <div style="font-size:10px;opacity:.8">Secure Banking Portal</div>
+            </div>
+            <div style="margin-left:auto;background:#e53935;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;animation:blink 1.5s infinite">🔴 ACTION REQUIRED</div>
+          </div>
+          <div style="background:#f3f4f6;padding:8px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e5e7eb">
+            <span style="font-size:13px">🔒</span>
+            <span style="font-size:12px;color:#374151;font-family:monospace;flex:1">${m.url}</span>
+          </div>
+          <div style="padding:20px">
+            <div style="background:#fff3f3;border:2px solid #e53935;border-radius:10px;padding:14px 16px;margin-bottom:18px;display:flex;gap:10px">
+              <span style="font-size:24px">⚠️</span>
+              <div>
+                <div style="font-size:14px;font-weight:700;color:#c62828">Account Verification Required</div>
+                <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.6">We detected unusual activity on your account. Please re-verify your card details to restore full access. Failure to verify within <b style="color:#c62828">30 minutes</b> will result in account suspension.</div>
+              </div>
+            </div>
+            <div style="background:linear-gradient(135deg,#1a237e,#4a148c);border-radius:14px;padding:20px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden">
+              <div style="font-size:20px;margin-bottom:12px">💳</div>
+              <div style="font-family:monospace;font-size:18px;letter-spacing:4px;margin-bottom:12px">•••• •••• •••• ••••</div>
+              <div style="display:flex;justify-content:space-between;font-size:12px">
+                <div><div style="opacity:.7;font-size:10px">CARD HOLDER</div><div>RE-VERIFY REQUIRED</div></div>
+                <div style="text-align:right"><div style="opacity:.7;font-size:10px">EXPIRES</div><div>••/••</div></div>
+              </div>
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:8px;margin-top:4px">Verify Card & Restore Access →</button>
+          </div>
+        </div>`;
+        // ── MODULE 6: Gift / Free Prize ────────────────────────────────────────────
+      } else if (id === 6) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:420px;width:100%">
+          <div style="background:#0b141a;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)">
+            <div style="background:#1f2c33;padding:12px 16px;display:flex;align-items:center;gap:10px">
+              <div style="width:38px;height:38px;background:#25d366;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px">🛒</div>
+              <div>
+                <div style="color:#e9edef;font-size:14px;font-weight:600">Flipkart Rewards</div>
+                <div style="color:#8696a0;font-size:11px">Official Customer Care</div>
+              </div>
+            </div>
+            <div style="padding:16px;background:#0b141a">
+              <div style="background:#1f2c33;border-radius:8px 16px 16px 8px;padding:14px 16px;margin-bottom:4px;border-left:3px solid #25d366">
+                <div style="color:#e9edef;font-size:13px;line-height:1.7">
+                  🎉 <b style="color:#25d366">Congratulations!</b><br><br>
+                  You have been selected as our <b>Platinum Customer Reward Winner</b>!<br><br>
+                  🎁 <b>Prize: Bajaj Mixer Grinder (Worth ₹8,500)</b><br><br>
+                  To receive your gift, pay just <b style="color:#ffd700">₹99 delivery charge</b> and fill the form below.<br><br>
+                  <span style="color:#ff6b6b;font-size:11px">⚠️ Offer valid for next 2 hours only!</span>
+                </div>
+                <div style="color:#8696a0;font-size:10px;text-align:right;margin-top:6px">3:42 PM ✓✓</div>
+              </div>
+            </div>
+            <div style="background:#1a2530;padding:16px;border-top:1px solid #2a3942">
+              <div style="color:#25d366;font-size:13px;font-weight:700;margin-bottom:12px">🎁 Claim Your Free Gift</div>
+              <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                <div class="field-wrap">
+                  <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                    style="background:#2a3942;border:1px solid #3b4a54;color:#e9edef;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                  <span class="field-error" id="ferr-${i}"></span>
+                </div>`).join('')}
+              </div>
+              <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:8px">
+                Claim My Gift & Pay ₹99 →
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+      // ── MODULE 7: Malicious App / Reward Points ───────────────────────────────
+      } else if (id === 7) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:400px;width:100%">
+          <div style="background:#1a1a2e;border-radius:36px;padding:14px;box-shadow:0 24px 64px rgba(0,0,0,.7);border:3px solid #222">
+            <div style="background:#000;border-radius:26px;overflow:hidden">
+              <div style="background:#111;padding:8px 20px;display:flex;justify-content:space-between;font-size:11px;color:#fff">
+                <span>9:41 AM</span><span>📶 HDFC  🔋</span>
+              </div>
+              <div style="background:#1c1c1e;padding:12px 16px;border-bottom:1px solid #333">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <div style="width:28px;height:28px;background:#e53935;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px">🏦</div>
+                  <div style="color:#fff;font-size:13px;font-weight:600">HDFC Bank</div>
+                  <div style="color:#636366;font-size:11px;margin-left:auto">now</div>
+                </div>
+                <div style="color:#e9edef;font-size:13px;line-height:1.6">
+                  Your <b style="color:#ffd700">4,520 reward points (₹4,520)</b> expire TODAY at midnight. Download HDFC Rewards App to redeem instantly!
+                </div>
+              </div>
+              <div style="background:#0d0d0d;padding:20px">
+                <div style="text-align:center;margin-bottom:20px">
+                  <div style="width:72px;height:72px;background:#e53935;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 10px">🏦</div>
+                  <div style="color:#fff;font-size:17px;font-weight:700">HDFC Rewards Pro</div>
+                  <div style="color:#8e8e93;font-size:12px;margin-top:4px">Version 4.2.1 · 14MB</div>
+                  <div style="display:flex;justify-content:center;gap:4px;margin-top:6px">
+                    ⭐⭐⭐⭐⭐ <span style="color:#8e8e93;font-size:11px">(4.8 · 2.4M reviews)</span>
+                  </div>
+                </div>
+                <div style="background:#1c1c1e;border-radius:10px;padding:14px;margin-bottom:14px">
+                  <div style="color:#ffd700;font-size:12px;font-weight:700;margin-bottom:8px">⚠️ To install this app:</div>
+                  <div style="color:#e9edef;font-size:12px;line-height:1.8">1. Enable "Install from Unknown Sources" in Settings<br>2. Enter your HDFC credentials below<br>3. Tap Install to claim your ₹4,520</div>
+                </div>
+                <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                  <div class="field-wrap">
+                    <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                      style="background:#2c2c2e;border:1px solid #444;color:#fff;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                    <span class="field-error" id="ferr-${i}"></span>
+                  </div>`).join('')}
+                </div>
+                <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#e53935,#b71c1c);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:10px">
+                  📲 Install & Redeem ₹4,520
+                </button>
+                <div style="color:#636366;font-size:10px;text-align:center;margin-top:8px">hdfc-rewards-app.net · Not from Play Store</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      // ── MODULE 8: WFH / Fake Job ───────────────────────────────────────────────
+      } else if (id === 8) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#00695c,#00897b);padding:16px 20px;display:flex;align-items:center;gap:10px">
+            <div style="font-size:28px">🏠</div>
+            <div style="color:#fff">
+              <div style="font-size:17px;font-weight:700">WorkFromHomeIndia.in</div>
+              <div style="font-size:11px;opacity:.8">Trusted By 4.2L+ Professionals</div>
+            </div>
+          </div>
+          <div style="background:#e0f2f1;border-bottom:2px solid #4db6ac;padding:14px 20px;text-align:center">
+            <div style="font-size:11px;color:#00695c;font-weight:700;letter-spacing:1px;text-transform:uppercase">💰 GUARANTEED DAILY INCOME</div>
+            <div style="font-size:30px;font-weight:900;color:#00695c;margin:6px 0">₹8,000/day</div>
+            <div style="font-size:13px;color:#4db6ac">Data Entry · Form Filling · No Experience Required</div>
+          </div>
+          <div style="padding:16px 20px;background:#f8f8f8;border-bottom:1px solid #eee;display:flex;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:10px;border:1px solid #e0e0e0">
+              <div style="font-size:11px;color:#888">Work Hours</div><div style="font-size:14px;font-weight:700;color:#333;margin-top:2px">2-3 hrs/day</div>
+            </div>
+            <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:10px;border:1px solid #e0e0e0">
+              <div style="font-size:11px;color:#888">Payment</div><div style="font-size:14px;font-weight:700;color:#333;margin-top:2px">Daily UPI</div>
+            </div>
+            <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:10px;border:1px solid #e0e0e0">
+              <div style="font-size:11px;color:#888">Joining</div><div style="font-size:14px;font-weight:700;color:#e53935;margin-top:2px">Today</div>
+            </div>
+          </div>
+          <div style="padding:20px">
+            <div style="background:#fff8e1;border:1px solid #ffcc80;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:#e65100">
+              ⚡ <b>Registration closes today!</b> Only 8 slots remaining. Pay ₹500 refundable security deposit to activate your account.
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#00695c,#00897b);border-radius:8px;margin-top:4px">Register & Start Earning Today →</button>
+          </div>
+        </div>`;
+
+      // ── MODULE 9: Ponzi / Investment ──────────────────────────────────────────
+      } else if (id === 9) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:420px;width:100%">
+          <div style="background:#17212b;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)">
+            <div style="background:#212d3b;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2b3f55">
+              <div style="width:40px;height:40px;background:linear-gradient(135deg,#0088cc,#00c6ff);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px">📈</div>
+              <div>
+                <div style="color:#fff;font-size:14px;font-weight:600">ProfitMax India — Official</div>
+                <div style="color:#8a9bb0;font-size:11px">📢 14,823 members · Verified Channel</div>
+              </div>
+            </div>
+            <div style="padding:16px;background:#17212b">
+              <div style="background:#212d3b;border-radius:8px 14px 14px 8px;padding:12px 14px;margin-bottom:10px;border-left:3px solid #0088cc">
+                <div style="color:#0088cc;font-size:11px;font-weight:700;margin-bottom:6px">📊 Admin • Verified</div>
+                <div style="color:#e9edef;font-size:13px;line-height:1.7">🚀 <b style="color:#4caf50">TODAY'S RESULTS</b><br>Members who invested ₹10,000 received ₹25,000 in 72 hours!<br><br>📈 Our AI trading bot returned <b style="color:#ffd700">250% profit</b> this week.<br><br>⚡ <b>LIMITED SLOTS LEFT</b> — Join before midnight!</div>
+                <div style="color:#8a9bb0;font-size:10px;margin-top:6px">9:15 AM 👁 8.4K</div>
+              </div>
+              <div style="background:#182533;border-radius:8px 14px 14px 8px;padding:10px 14px;margin-bottom:10px">
+                <div style="color:#ffd700;font-size:11px;font-weight:700;margin-bottom:4px">⭐ Rajesh_Pune verified investor</div>
+                <div style="color:#e9edef;font-size:12px">Invested ₹50,000 → received ₹1,25,000 in 5 days! Real screenshot attached 📷</div>
+              </div>
+              <div style="background:#212d3b;border-radius:12px;padding:16px;border:1px solid #2b5278">
+                <div style="color:#4caf50;font-size:13px;font-weight:700;margin-bottom:12px;text-align:center">💰 INVEST NOW — Limited Slots</div>
+                <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                  <div class="field-wrap">
+                    <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                      style="background:#182533;border:1px solid #2b5278;color:#e9edef;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                    <span class="field-error" id="ferr-${i}"></span>
+                  </div>`).join('')}
+                </div>
+                <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#0088cc,#006dad);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:10px">
+                  🚀 Join ProfitMax — Start Earning
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      // ── MODULE 10: Digital Arrest ─────────────────────────────────────────────
+      } else if (id === 10) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:420px;width:100%">
+          <div style="background:#0a0a0a;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(239,68,68,.4),0 24px 64px rgba(0,0,0,.7);border:2px solid #dc2626">
+            <div style="background:#111;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #dc2626">
+              <div style="width:10px;height:10px;background:#dc2626;border-radius:50%;animation:blink 1s infinite"></div>
+              <span style="color:#dc2626;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">🔴 LIVE — CBI Video Call</span>
+              <span style="color:#888;font-size:11px;margin-left:auto">00:14:32</span>
+            </div>
+            <div style="background:#0d0d0d;padding:20px;text-align:center;position:relative;border-bottom:1px solid #222">
+              <div style="background:#1a1a1a;border:2px solid #333;border-radius:12px;padding:20px;margin-bottom:12px">
+                <div style="font-size:48px;margin-bottom:8px">👮</div>
+                <div style="color:#fff;font-size:13px;font-weight:600">Officer Verma — CBI Mumbai</div>
+                <div style="color:#888;font-size:11px">Badge ID: CBI/MUM/2024/4471</div>
+              </div>
+              <div style="background:#fff3f3;border:2px solid #dc2626;border-radius:12px;padding:16px;text-align:left">
+                <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px;text-align:center">⚠️ NOTICE OF DIGITAL ARREST</div>
+                <div style="font-size:12px;color:#333;line-height:1.8">
+                  FIR No: <b>CBI/MUM/2024/09871</b><br>
+                  Charge: Money laundering / NDPS Act<br>
+                  You are under <b>DIGITAL ARREST</b>.<br>
+                  <span style="color:#dc2626;font-weight:700">DO NOT DISCONNECT THIS CALL</span>
+                </div>
+              </div>
+            </div>
+            <div style="background:#0d0d0d;padding:16px">
+              <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:14px">
+                <div style="color:#ffd700;font-size:12px;font-weight:700;margin-bottom:8px">⚖️ BAIL CLEARANCE FEE — COURT ORDER</div>
+                <div style="color:#aaa;font-size:12px;line-height:1.7">Pay ₹${m.amount} immediately to the Supreme Court Escrow Account to avoid physical arrest. Submit your details below for court verification.</div>
+              </div>
+              <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                <div class="field-wrap">
+                  <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                    style="background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                  <span class="field-error" id="ferr-${i}"></span>
+                </div>`).join('')}
+              </div>
+              <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#dc2626,#7f1d1d);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:10px">
+                Submit for Court Verification →
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+      // ── ALL OTHER MODULES: Smart contextual layout ─────────────────────────────
+      } else {
+        const tagColors = {
+          'Social Media Fraud': { bg:'linear-gradient(135deg,#e91e8c,#9b27af)', icon:'📱' },
+          'Utility Fraud':      { bg:'linear-gradient(135deg,#f59e0b,#b45309)', icon:'⚡' },
+          'Tax Fraud':          { bg:'linear-gradient(135deg,#0891b2,#0e7490)', icon:'📊' },
+          'Corporate Fraud':    { bg:'linear-gradient(135deg,#4f46e5,#312e81)', icon:'🏢' },
+          'Telecom Fraud':      { bg:'linear-gradient(135deg,#ea580c,#9a3412)', icon:'📶' },
+          'Education Fraud':    { bg:'linear-gradient(135deg,#7c3aed,#4c1d95)', icon:'🎓' },
+          'Copyright Scam':     { bg:'linear-gradient(135deg,#3b82f6,#1e3a8a)', icon:'©️'  },
+          'Customs Fraud':      { bg:'linear-gradient(135deg,#14b8a6,#134e4a)', icon:'✈️' },
+          'Charity Fraud':      { bg:'linear-gradient(135deg,#f43f5e,#881337)', icon:'❤️' },
+          'Cyber Fraud':        { bg:'linear-gradient(135deg,#06b6d4,#164e63)', icon:'📶' },
+          'AI Fraud':           { bg:'linear-gradient(135deg,#a855f7,#7e22ce)', icon:'🤖' },
+        };
+        const tc = tagColors[m.tag] || { bg:'linear-gradient(135deg,#374151,#1f2937)', icon:'⚠️' };
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:460px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:${tc.bg};padding:18px 20px;display:flex;align-items:center;gap:14px">
+            <div style="width:48px;height:48px;background:rgba(255,255,255,.15);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px">${tc.icon}</div>
+            <div style="color:#fff;flex:1">
+              <div style="font-size:9px;opacity:.75;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px">${m.tag}</div>
+              <div style="font-size:17px;font-weight:700;line-height:1.2">${m.amountLabel}</div>
+            </div>
+          </div>
+          <div style="background:#f3f4f6;padding:8px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e5e7eb;font-family:monospace">
+            <span style="font-size:13px">🔒</span>
+            <span style="font-size:12px;color:#374151;flex:1">${m.url}</span>
+          </div>
+          ${m.diff === 'high' ? `<div style="background:#b91c1c;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600;animation:blink 1.5s infinite">⏰ ${m.fee} — Expires in <span id="scam-timer">09:59</span></div>` : ''}
+          <div style="padding:20px">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:18px;text-align:center">
+              <div style="font-size:24px;margin-bottom:4px">${m.icon}</div>
+              <div style="font-size:22px;font-weight:800;color:#15803d">${m.amount}</div>
+              <div style="font-size:12px;color:#16a34a;margin-top:4px">${m.badge}</div>
+            </div>
+            <div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#e65100">
+              ${m.feeNote}
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:${tc.bg};border-radius:8px;margin-top:8px">Submit & Continue →</button>
+            <div class="scam-trust" style="margin-top:12px">
+              <span>🔒 Secure</span><span>✓ Verified</span><span>🏛 Certified</span>
+            </div>
+          </div>
+        </div>`;
+        if (m.diff === 'high') startTimer();
+      }
+
+      document.getElementById('scam-render').innerHTML = `<div style="display:flex;justify-content:center;width:100%">${html}</div>`;
     }
 
     function startTimer() {
