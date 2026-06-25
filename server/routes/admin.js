@@ -72,6 +72,130 @@ router.delete('/user/:userId', async (req, res) => {
   }
 });
 
+// ─── GET /api/admin/user/:userId/attempts ────────────────────
+// Get all attempts for a specific user with module details
+router.get('/user/:userId/attempts', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Verify user exists
+    const user = await User.findById(userId).select('-password_hash');
+    if (!user) {
+      return res.status(404).json({ ok: false, err: 'User not found.' });
+    }
+    
+    // Get all attempts for this user
+    const attempts = await Attempt.find({ user_id: userId })
+      .sort({ completed_at: -1 });
+    
+    // Get all modules to enrich the data
+    const modules = await Module.find();
+    const moduleMap = {};
+    modules.forEach(m => { moduleMap[m.module_id] = m; });
+    
+    // Group attempts by module
+    const byModule = {};
+    let totalRisk = 0;
+    let totalQuiz = 0;
+    let totalModulesCompleted = 0;
+    let totalGamesPlayed = 0;
+    
+    attempts.forEach(att => {
+      if (att.module_id < 0) {
+        // Game attempt
+        totalGamesPlayed++;
+        return;
+      }
+      
+      if (!byModule[att.module_id]) {
+        const meta = moduleMap[att.module_id] || {};
+        byModule[att.module_id] = {
+          module_id: att.module_id,
+          title: meta.title || `Module ${att.module_id}`,
+          icon: meta.icon || '📦',
+          tag: meta.tag || '—',
+          difficulty: meta.diff || meta.difficulty || 'med',
+          attempts: 0,
+          submitted: 0,
+          best_risk: 0,
+          best_quiz_pct: 0,
+          last_attempt: null
+        };
+      }
+      
+      const mod = byModule[att.module_id];
+      mod.attempts++;
+      
+      if (att.submitted) {
+        mod.submitted++;
+        totalModulesCompleted++;
+        if ((att.risk_score || 0) > mod.best_risk) mod.best_risk = att.risk_score;
+        
+        if (att.quiz_total > 0) {
+          const pct = Math.round((att.quiz_score / att.quiz_total) * 100);
+          if (pct > mod.best_quiz_pct) mod.best_quiz_pct = pct;
+          totalQuiz += att.quiz_score;
+        }
+        
+        totalRisk += (att.risk_score || 0);
+      }
+      
+      if (!mod.last_attempt || new Date(att.completed_at) > new Date(mod.last_attempt)) {
+        mod.last_attempt = att.completed_at;
+      }
+    });
+    
+    // Calculate averages
+    const modulesArr = Object.values(byModule).map(m => ({
+      ...m,
+      avg_risk: m.submitted > 0 ? Math.round(m.best_risk) : 0,
+      status: m.submitted > 0 ? 'completed' : 'in-progress',
+      started: m.attempts > 0
+    }));
+    
+    modulesArr.sort((a, b) => a.module_id - b.module_id);
+    
+    // Calculate overall stats
+    const submittedAttempts = attempts.filter(a => a.submitted && a.module_id >= 0);
+    const avg_risk = submittedAttempts.length > 0
+      ? Math.round(submittedAttempts.reduce((s, a) => s + (a.risk_score || 0), 0) / submittedAttempts.length)
+      : 0;
+    const avg_quiz_pct = submittedAttempts.filter(a => a.quiz_total > 0).length > 0
+      ? Math.round(
+          submittedAttempts
+            .filter(a => a.quiz_total > 0)
+            .reduce((s, a) => s + ((a.quiz_score / a.quiz_total) * 100), 0) /
+          submittedAttempts.filter(a => a.quiz_total > 0).length
+        )
+      : 0;
+    
+    res.json({
+      ok: true,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        created_at: user.created_at,
+        last_login: user.last_login
+      },
+      stats: {
+        total_attempts: attempts.length,
+        total_modules_completed: totalModulesCompleted,
+        total_games_played: totalGamesPlayed,
+        avg_risk,
+        avg_quiz_pct,
+        total_risk_points: totalRisk,
+        total_quiz_points: totalQuiz
+      },
+      modules: modulesArr
+    });
+  } catch (error) {
+    console.error('User attempts fetch error:', error);
+    res.status(500).json({ ok: false, err: 'Failed to fetch user attempts.' });
+  }
+});
+
 // ─── GET /api/admin/stats ─────────────────────────────────
 router.get('/stats', async (req, res) => {
   try {
