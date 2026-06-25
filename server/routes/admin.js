@@ -280,48 +280,48 @@ router.get('/byModule', authAdmin, async (req, res) => {
 
 // ─── GET /api/admin/modules ────────────────────────────────────────────────
 // Module-wise analytics
-// router.get('/modules', async (req, res) => {
-//   try {
-//     const modules = await Module.find().sort({ module_id: 1 });
+router.get('/modules', async (req, res) => {
+  try {
+    const modules = await Module.find().sort({ module_id: 1 });
 
-//     const moduleStats = await Promise.all(
-//       modules.map(async (mod) => {
-//         const attempts = await Attempt.find({ module_id: mod.module_id });
-//         const submitted = attempts.filter(a => a.submitted);
-//         const quizAttempts = submitted.filter(a => a.quiz_total > 0);
+    const moduleStats = await Promise.all(
+      modules.map(async (mod) => {
+        const attempts = await Attempt.find({ module_id: mod.module_id });
+        const submitted = attempts.filter(a => a.submitted);
+        const quizAttempts = submitted.filter(a => a.quiz_total > 0);
 
-//         const avg_risk = submitted.length > 0
-//           ? Math.round(submitted.reduce((s, a) => s + (a.risk_score || 0), 0) / submitted.length)
-//           : 0;
+        const avg_risk = submitted.length > 0
+          ? Math.round(submitted.reduce((s, a) => s + (a.risk_score || 0), 0) / submitted.length)
+          : 0;
 
-//         const avg_quiz_pct = quizAttempts.length > 0
-//           ? Math.round(
-//               quizAttempts.reduce((s, a) => s + ((a.quiz_score / a.quiz_total) * 100), 0) / quizAttempts.length
-//             )
-//           : 0;
+        const avg_quiz_pct = quizAttempts.length > 0
+          ? Math.round(
+              quizAttempts.reduce((s, a) => s + ((a.quiz_score / a.quiz_total) * 100), 0) / quizAttempts.length
+            )
+          : 0;
 
-//         return {
-//           module_id: mod.module_id,
-//           title: mod.title,
-//           icon: mod.icon,
-//           tag: mod.tag,
-//           difficulty: mod.diff,
-//           active: mod.active,
-//           attempts: attempts.length,
-//           completions: submitted.length,
-//           avg_risk,
-//           avg_quiz_pct
-//         };
-//       })
-//     );
+        return {
+          module_id: mod.module_id,
+          title: mod.title,
+          icon: mod.icon,
+          tag: mod.tag,
+          difficulty: mod.diff,
+          active: mod.active,
+          attempts: attempts.length,
+          completions: submitted.length,
+          avg_risk,
+          avg_quiz_pct
+        };
+      })
+    );
 
-//     res.json({ ok: true, modules: moduleStats });
+    res.json({ ok: true, modules: moduleStats });
 
-//   } catch (error) {
-//     console.error('Module stats error:', error);
-//     res.status(500).json({ ok: false, err: 'Failed to fetch module stats.' });
-//   }
-// });
+  } catch (error) {
+    console.error('Module stats error:', error);
+    res.status(500).json({ ok: false, err: 'Failed to fetch module stats.' });
+  }
+});
 
 // ─── DELETE /api/admin/session/:sessionId ──────────────────────────────────
 // Delete a specific session and its attempts
