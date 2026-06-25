@@ -2252,6 +2252,237 @@
       border-color: var(--accent);
     }
 
+    /* ═══ INFO / DESCRIPTION PAGE ═══ */
+    .info-page {
+      flex: 1;
+      max-width: 720px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+
+    .info-back {
+      color: var(--text3);
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .info-back:hover {
+      color: var(--text);
+    }
+
+    .info-hero {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .info-icon-big {
+      font-size: 52px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .info-hero-text {
+      flex: 1;
+    }
+
+    .info-tag {
+      display: inline-block;
+      background: rgba(239, 68, 68, .12);
+      color: #fca5a5;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(239, 68, 68, .25);
+    }
+
+    .info-title {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      line-height: 1.25;
+    }
+
+    .info-subtitle {
+      font-size: 15px;
+      color: var(--text2);
+      line-height: 1.65;
+    }
+
+    .info-section {
+      margin-bottom: 28px;
+    }
+
+    .info-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .info-what {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      font-size: 14px;
+      color: var(--text2);
+      line-height: 1.75;
+    }
+
+    .info-what b {
+      color: var(--text);
+    }
+
+    .info-scenario {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent2);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    }
+
+    .info-scenario-num {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--accent2);
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .info-scenario-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .info-scenario-body {
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.65;
+    }
+
+    .info-stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .info-stat {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+
+    .info-stat-num {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .info-stat-lbl {
+      font-size: 11px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+
+    .info-warning-box {
+      background: rgba(239, 68, 68, .06);
+      border: 1px solid rgba(239, 68, 68, .2);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.6;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .info-warning-icon {
+      color: #fca5a5;
+      flex-shrink: 0;
+      font-size: 15px;
+    }
+
+    .info-cta-area {
+      margin-top: 36px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, .08), rgba(249, 115, 22, .08));
+      border: 1px solid rgba(239, 68, 68, .25);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .info-cta-heading {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .info-cta-sub {
+      font-size: 13px;
+      color: var(--text2);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .info-cta-btn {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 36px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: opacity .15s;
+      text-decoration: none;
+    }
+
+    .info-cta-btn:hover {
+      opacity: .88;
+    }
+
+    .info-diff-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+
     /* ══════════════════════════════════════════════════════════
        ADMIN LOGIN MODAL
     ══════════════════════════════════════════════════════════ */
@@ -3011,7 +3242,21 @@
       </div>
     </div>
   </div>
+  <!-- ── INFO / DESCRIPTION PAGE ──────────────────────────── -->
+  <div id="screen-info" class="screen">
+    <nav class="nav">
+      <div class="nav-logo">
+        <div class="logo-icon">🔍</div> About This Scam
+      </div>
+      <div class="nav-meta">
+        <div class="risk-badge">Risk: <span id="info-risk-display">0</span></div>
+        <div class="progress-pill">Done: <b id="info-done-display">0</b>/23</div>
+      </div>
+    </nav>
+    <div class="info-page" id="info-content"></div>
+  </div>
 
+  <!-- ── LEARN ──────────────────────────────────────────────── -->
   <!-- ── LEARN ──────────────────────────────────────────────── -->
   <div id="screen-learn" class="screen">
     <nav class="nav">
@@ -3477,19 +3722,19 @@
     // ── Session API (replaces apiPost /session/start) ──────────────────────────
     // ── Session API (Hybrid: API first, localStorage fallback) ────────────────
     async function localSessionStart(existing_id) {
-  if (API_ENABLED) {
-    try {
-      const headers = { 'Content-Type': 'application/json' };
-      const userToken = localStorage.getItem(LS_USER_TOKEN);
-      if (userToken) {
-        headers['Authorization'] = 'Bearer ' + userToken;
-      }
-      
-      const res = await fetch(API_BASE + '/session/start', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({ session_id: existing_id || null })
-      });
+      if (API_ENABLED) {
+        try {
+          const headers = { 'Content-Type': 'application/json' };
+          const userToken = localStorage.getItem(LS_USER_TOKEN);
+          if (userToken) {
+            headers['Authorization'] = 'Bearer ' + userToken;
+          }
+
+          const res = await fetch(API_BASE + '/session/start', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ session_id: existing_id || null })
+          });
           const data = await res.json();
           if (data.ok) {
             // Also save to localStorage as cache
@@ -3524,19 +3769,19 @@
     // ── Attempt API (replaces apiPost /module/attempt) ─────────────────────────
     // ── Attempt API (Hybrid: API first, localStorage fallback) ────────────────
     async function localLogAttempt(data) {
-  if (API_ENABLED && state.sessionId) {
-    try {
-      const headers = { 'Content-Type': 'application/json' };
-      const userToken = localStorage.getItem(LS_USER_TOKEN);
-      if (userToken) {
-        headers['Authorization'] = 'Bearer ' + userToken;
-      }
-      
-      const res = await fetch(API_BASE + '/attempt', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(data)
-      });
+      if (API_ENABLED && state.sessionId) {
+        try {
+          const headers = { 'Content-Type': 'application/json' };
+          const userToken = localStorage.getItem(LS_USER_TOKEN);
+          if (userToken) {
+            headers['Authorization'] = 'Bearer ' + userToken;
+          }
+
+          const res = await fetch(API_BASE + '/attempt', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(data)
+          });
           const json = await res.json();
           if (json.ok) {
             return { ok: true, from_api: true };
@@ -4599,19 +4844,428 @@
     }
 
     // ─── RENDER MODULES ──────────────────────────────────────────────────────────
-    function renderModules() {
+        function renderModules() {
       document.getElementById('modules-grid').innerHTML = MODULES.map(m => `
-    <div class="module-card ${state.completed.includes(m.id) ? 'completed' : ''}" onclick="startModule(${m.id})" onkeydown="if(event.key==='Enter'||event.key===' ')startModule(${m.id})" role="button" tabindex="0" aria-label="Start ${eh(m.title)} simulation">
+    <div class="module-card ${state.completed.includes(m.id) ? 'completed' : ''}" onclick="showInfoPage(${m.id})" onkeydown="if(event.key==='Enter'||event.key===' ')showInfoPage(${m.id})" role="button" tabindex="0" aria-label="Learn about ${eh(m.title)}">
       <div class="card-icon" aria-hidden="true">${eh(m.icon)}</div>
       <div class="card-difficulty diff-${eh(m.diff)}">${m.diff === 'high' ? 'High Risk' : m.diff === 'med' ? 'Medium' : 'Low Risk'}</div>
       <div class="card-title">${eh(m.title)}</div>
       <div class="card-desc">${eh(m.desc)}</div>
       <div class="card-footer">
         <span class="card-tag">${eh(m.tag)}</span>
-        <button class="start-btn">${state.completed.includes(m.id) ? 'Replay ↺' : 'Start →'}</button>
+        <button class="start-btn">${state.completed.includes(m.id) ? 'Replay ↺' : 'Learn →'}</button>
       </div>
     </div>`).join('');
     }
+
+    // ─── SCAM INFO DATA ─────────────────────────────────────────────────────────
+    const SCAM_INFO = {
+      0: {
+        what: `An <b>instant loan scam</b> promises quick, hassle-free loans with minimal documentation — often pre-approved — and demands an upfront "processing fee" or "insurance" before disbursement. The loan never comes. These scams exploit financial desperation and the appeal of skipping lengthy bank verification.`,
+        stats: [
+          { num: '₹2,200 Cr', lbl: 'Lost to digital loan fraud in India' },
+          { num: '38%', lbl: 'Of all cyber fraud complaints in India' },
+          { num: '24 hrs', lbl: 'Time scammers disappear after taking fee' }
+        ],
+        scenarios: [
+          { title: 'Student Loan Trap', body: 'Rohit, a 22-year-old college student, applied for a ₹2 lakh loan on a flashy app. He was "approved" within 5 minutes and asked to pay ₹3,500 as GST + processing. After paying, the app vanished from his phone.' },
+          { title: 'WhatsApp Loan Offer', body: 'Sunita received a WhatsApp message: "Pre-approved for ₹5 lakh loan, no CIBIL check needed." She paid ₹8,500 across multiple "verification stages." The agent then asked for her Aadhaar OTP, and ₹47,000 disappeared from her bank.' },
+          { title: 'Fake App Loan', body: 'Karthik downloaded a loan app from a Facebook ad. The app accessed his contacts and photos. After he paid the "processing fee," they threatened to leak morphed photos to his contacts unless he paid ₹50,000 more.' }
+        ],
+        warnings: ['Legitimate lenders NEVER charge upfront fees — they are deducted from the loan amount', 'RBI maintains the official NBFC registry at rbi.org.in — verify before applying', 'Real loans require proper KYC, credit checks, and documentation — they cannot be "instant"']
+      },
+      1: {
+        what: `A <b>fake interview / job scam</b> lures job seekers with high-salary positions that require no experience. They demand registration fees, training fees, or "security deposits" and collect sensitive documents like Aadhaar and PAN for identity theft.`,
+        stats: [
+          { num: '₹1,420 Cr', lbl: 'Lost to job fraud in India' },
+          { num: '68%', lbl: 'Target college students and freshers' },
+          { num: '1 in 4', lbl: 'Job listings on social media are fraudulent' }
+        ],
+        scenarios: [
+          { title: 'Work-From-Home Data Entry', body: 'Priya paid ₹500 registration for a "data entry" job paying ₹5,000/day. They asked her to buy a "training kit" for ₹2,500. After paying, they vanished.' },
+          { title: 'HR Impersonation', body: 'A fake "HR from Infosys" contacted Amit for a developer role. They asked for PAN + Aadhaar + bank details "for background verification." His identity was used to apply for 4 credit cards.' },
+          { title: 'Certificate Theft', body: 'Meera was asked to upload her original degree certificates and mark sheets on a portal. They were later used to create fake certificates sold to other fraudsters.' }
+        ],
+        warnings: ['No legitimate employer charges fees for jobs, interviews, or training', 'Verify companies on MCA21 (mca.gov.in) before sharing any documents', 'Aadhaar + PAN together enable identity theft — never share both in one form']
+      },
+      2: {
+        what: `A <b>fake e-commerce deal scam</b> lists premium products (iPhones, designer bags, electronics) at impossibly low prices — 80-95% below market rate. The goal is to capture complete payment card details which are then used for unauthorized transactions.`,
+        stats: [
+          { num: '₹580 Cr', lbl: 'E-commerce fraud losses in India (2023)' },
+          { num: '4.2M', lbl: 'Fake shopping sites detected globally in 2024' },
+          { num: '72 hrs', lbl: 'Average lifespan of a fake shopping site' }
+        ],
+        scenarios: [
+          { title: 'Festival Sale iPhone', body: 'During Diwali sale, "iPhone 16 Pro for ₹3,499" was advertised. Arjun paid via UPI. The site vanished in 48 hours, and his card was later charged for international transactions.' },
+          { title: 'Instagram Sneaker Store', body: 'A college student ordered "Nike Air Max" for ₹799 from an Instagram store. She received plastic chappals in a Nike box. The seller blocked her instantly.' },
+          { title: 'Flash Sale TV', body: 'A family paid ₹12,000 for a "Samsung TV" listed at "₹2,999 only 1 left." Payment was taken, a fake tracking number was sent, and the contact became unreachable.' }
+        ],
+        warnings: ['If the price is more than 40% below MRP, it is almost certainly fake', 'Only buy Apple/Samsung products from apple.com/in or official authorized resellers', 'Never enter CVV on unfamiliar sites — use virtual cards for online shopping']
+      },
+      3: {
+        what: `A <b>gold / commodity investment scam</b> offers physical gold, silver, or other precious metals at prices far below market rate. The product is counterfeit (brass-plated, fake BIS stamps) or never delivered. They also use the UPI "collect request" trick to steal money.`,
+        stats: [
+          { num: '₹1,500 Cr', lbl: 'Lost to commodity fraud in India (2023)' },
+          { num: '93%', lbl: 'Of victims never recover their money' },
+          { num: '60-90%', lbl: 'Discount from market rate = guaranteed scam' }
+        ],
+        scenarios: [
+          { title: 'WhatsApp Gold Coin Group', body: 'Kavita joined a Telegram group selling "24K gold coins" for ₹4,999. She received brass-plated coins. The admin vanished.' },
+          { title: 'UPI Refund Trap', body: 'Suresh sold a laptop online. The buyer sent a "UPI collect request" disguised as a refund. Suresh entered his PIN — ₹23,000 was deducted. UPI collect requests INITIATE payments, not receive them.' },
+          { title: 'Fake Silver Bars', body: 'An investor ordered "BIS-certified silver bars" at 60% below market rate via Telegram. He received aluminium bars with fake BIS stamps.' }
+        ],
+        warnings: ['UPI "collect" requests DEDUCT money from your account when you enter PIN — they do not credit money', 'Buy gold only from RBI-authorised dealers or sovereign gold bonds', 'Verify BIS hallmark at bis.gov.in before buying precious metals']
+      },
+      4: {
+        what: `A <b>lottery / lucky draw scam</b> tricks victims into believing they have won a prize in a contest they never entered. To "claim" the prize, they're asked to pay a small fee — which escalates repeatedly. There is no prize. Illegal under the Prize Chits Act 1978.`,
+        stats: [
+          { num: '₹930 Cr', lbl: 'Lottery fraud losses in India' },
+          { num: '₹50 → ₹50K', lbl: 'Typical fee escalation pattern' },
+          { num: '1.2M', lbl: 'Lottery scam complaints filed in 2023' }
+        ],
+        scenarios: [
+          { title: 'SMS Lucky Winner', body: 'Meena got SMS: "You won ₹5 lakh National Digital Lottery. Pay ₹50 to claim." After paying, she was told to pay ₹500 GST, then ₹5,000 insurance. Total loss: ₹18,000.' },
+          { title: 'KBC Jackpot Call', body: 'A retired teacher was told she won ₹25 lakh on KBC. She paid "processing fees" over several days totaling ₹2.3 lakh before her son intervened.' },
+          { title: 'YouTube Gaming Laptop', body: 'A teenager paid "delivery fees" of ₹150, ₹800 customs, ₹2,500 insurance for a gaming laptop giveaway. The laptop never came.' }
+        ],
+        warnings: ['You cannot win a contest you never participated in — this is ALWAYS a scam', 'Fee escalation (₹50 → ₹500 → ₹5,000) is the defining pattern', 'Report lottery fraud to 1930 (National Cyber Helpline) immediately']
+      },
+      5: {
+        what: `A <b>credit card fraud scam</b> tricks victims into submitting complete card details — number, expiry, CVV, AND OTP — on fake "verification" pages. With these details, criminals make unlimited purchases, create cloned cards, or sell credentials on the dark web.`,
+        stats: [
+          { num: '₹1,457 Cr', lbl: 'Card/payment fraud losses in India' },
+          { num: '6 min', lbl: 'Avg time before card is misused after theft' },
+          { num: '45%', lbl: 'Card fraud involves phishing websites' }
+        ],
+        scenarios: [
+          { title: 'HDFC Exclusive Offers', body: 'Vikram got a WhatsApp link for "HDFC 90% off New Year sale." He entered card details. Within 6 minutes, ₹47,000 was charged to international merchants.' },
+          { title: 'SBI Card Verification', body: 'An elderly customer got SMS asking to "re-verify" her SBI card. She entered all details plus OTP. Her entire savings were cleared within hours.' },
+          { title: 'Google Pay Cashback', body: 'Rohit saw an ad for "₹2,000 ICICI cashback." He entered card details to "activate" — ₹68,000 was stolen; no cashback ever arrived.' }
+        ],
+        warnings: ['Your bank will NEVER ask for CVV or OTP through any website or call', 'Always type bank URLs manually — never click links in SMS or WhatsApp', 'Enable transaction alerts and set daily spending limits on all cards']
+      },
+      6: {
+        what: `A <b>free gift delivery scam</b> announces you've won a prize (mixer, phone, voucher) and asks for a small "delivery charge" to claim it. The small fee is bait — capturing your card details enables fraudsters to charge ANY amount at any time.`,
+        stats: [
+          { num: '₹280 Cr', lbl: 'Gift delivery scam losses in India' },
+          { num: '₹99 → ₹15K+', lbl: 'Typical additional charge range' },
+          { num: '72%', lbl: 'Victims targeted via WhatsApp forwards' }
+        ],
+        scenarios: [
+          { title: 'Flipkart Spin-and-Win', body: 'Deepa clicked a WhatsApp "Flipkart Spin-and-Win" link. She "won" a mixer, paid ₹99 delivery. Three days later, ₹12,500 was debited from her card.' },
+          { title: 'Amazon Loyalty Reward', body: 'A family paid ₹150 delivery for an "Amazon Prime loyalty gift." Their card was used for three international transactions totaling ₹29,000.' },
+          { title: 'Festival Hamper', body: 'During Holi, Neha paid ₹89 for a "Marico gift hamper." Two weeks later, 11 small charges from different merchants totaled ₹8,700.' }
+        ],
+        warnings: ['Legitimate companies NEVER charge delivery fees for prizes you have won', 'Once card details are saved by fraudsters, any amount can be charged at any time', 'Real contest winners are notified through official brand communications, not SMS forwards']
+      },
+      7: {
+        what: `A <b>reward points / malware app scam</b> creates urgency ("points expire tonight!") to trick victims into downloading fake banking apps outside the Play Store. Once installed, the malware reads SMS (OTPs), monitors banking apps, takes screenshots, and drains accounts silently.`,
+        stats: [
+          { num: '₹524 Cr', lbl: 'Malware/app fraud losses in India' },
+          { num: '1,000+', lbl: 'Malicious APKs detected monthly in India' },
+          { num: '100%', lbl: 'Victims who installed lost OTP protection' }
+        ],
+        scenarios: [
+          { title: 'HDFC Reward APK', body: 'Anand installed an "HDFC Rewards APK." Within days, ₹74,000 was transferred via OTPs the malware intercepted from his SMS.' },
+          { title: 'Amazon Pay Fake App', body: 'A Delhi shopkeeper installed a "Amazon Pay Cashback" app from a WhatsApp link. The app read his banking SMS and slowly transferred ₹1,15,000 over 3 weeks.' },
+          { title: 'Screen Share Scam', body: 'Pooja\'s "bank employee" asked her to install AnyDesk. Once connected, the caller transferred ₹1,80,000 while telling her the screen was "loading."' }
+        ],
+        warnings: ['Only install banking apps from Google Play Store or Apple App Store — never from APK links', 'Banks NEVER send app download links via SMS or WhatsApp', 'If a banking app asks for unusual permissions (SMS access, accessibility), uninstall it immediately']
+      },
+      8: {
+        what: `A <b>work-from-home scam</b> advertises impossibly high pay for simple tasks — then demands a "refundable" registration fee. The fee escalates, tasks lead to more payments, and the promised salary never materializes. Targets unemployed youth and homemakers.`,
+        stats: [
+          { num: '₹198 Cr', lbl: 'Job fraud losses in India' },
+          { num: '₹200-800', lbl: 'Actual market rate for data entry/day' },
+          { num: '68%', lbl: 'Victims contacted via Telegram/WhatsApp' }
+        ],
+        scenarios: [
+          { title: 'Task Fee Loop', body: 'Reena paid ₹500 for a "data entry WFH job." First task required buying ₹1,500 of products. Then insurance fees. Then upgrade packages. Total loss: ₹22,000.' },
+          { title: 'YouTube Like Scam', body: 'A student earned ₹500 liking YouTube videos via Telegram. Asked to deposit ₹2,000 to "unlock withdrawals." Wallet disappeared.' },
+          { title: 'Amazon Product Reviewer', body: 'A homemaker paid ₹1,000 for training, ₹3,000 for certification, ₹8,000 for a "starter kit." No job ever materialized.' }
+        ],
+        warnings: ['No legitimate employer charges registration, training, or deposit fees — ever', 'Market rate for data entry is ₹200-800/day — anything ₹5,000+ is a scam', 'Verify jobs on LinkedIn, Naukri.com, or company websites — not WhatsApp groups']
+      },
+      9: {
+        what: `A <b>Ponzi / fake investment scheme</b> promises extraordinarily high, guaranteed returns — often doubling your money in days. Early investors are paid using new investor money. When recruitment slows, the scheme collapses and most investors lose everything.`,
+        stats: [
+          { num: '₹7,200 Cr', lbl: 'Ponzi/investment fraud losses in India' },
+          { num: '5,200%', lbl: 'Annual return "double in 7 days" implies' },
+          { num: '93%', lbl: 'Ponzi investors who lose everything' }
+        ],
+        scenarios: [
+          { title: 'Telegram Investment Group', body: 'Santosh joined a Telegram group showing daily profits. He invested ₹50,000, got ₹12,000 back. Convinced, he invested ₹3 lakh more. The admin vanished.' },
+          { title: 'Crypto Doubling Bot', body: 'An MBA student invested ₹1 lakh in an "AI crypto bot" promising 30% daily returns. Initial withdrawals worked. Family put in ₹9 lakh total. Platform crashed.' },
+          { title: 'Chit Fund Fraud', body: 'A Coimbatore chit fund operator promised 24% annual interest. He collected ₹4.2 crore from 340 families. When it collapsed, nearly everyone lost their savings.' }
+        ],
+        warnings: ['SEBI regulations prohibit promising guaranteed investment returns — any such scheme is illegal', 'Verify investment firms at sebi.gov.in before investing a single rupee', 'When early investors are paid, that\'s how Ponzi schemes build trust — collapse always comes later']
+      },
+      10: {
+        what: `A <b>"digital arrest" scam</b> is one of India's most sophisticated frauds. Criminals impersonate CBI, Narcotics Bureau, ED, or Supreme Court officials and claim your identity/phone was used in illegal activity. They demand you stay on a video call ("digital arrest") and pay a fine. PM Modi specifically warned the nation about this in October 2024.`,
+        stats: [
+          { num: '₹1,200 Cr', lbl: 'Digital arrest fraud losses (2024 est.)' },
+          { num: '92 hrs', lbl: 'Longest recorded "digital arrest" duration' },
+          { num: '60+', lbl: 'Average age of most victims' }
+        ],
+        scenarios: [
+          { title: 'Retired IAS Victim', body: 'A 68-year-old retired IAS officer was kept on video call for 12 hours by "CBI officers." They showed fake ID cards and arrest warrants. He transferred ₹83 lakh over two days.' },
+          { title: 'Parcel Narcotics Scam', body: 'A Bengaluru IT professional was told a parcel in her name contained narcotics. She was transferred to a "Mumbai Police officer." She paid ₹18 lakh over 4 days while being told not to tell anyone.' },
+          { title: 'WhatsApp Video FIR', body: 'A Pune professor was shown a fake FIR and arrest warrant on WhatsApp video. The "officer" threatened media coverage. He paid ₹11 lakh in cryptocurrency.' }
+        ],
+        warnings: ['Digital arrest has NO legal basis in Indian law — it does not exist', 'Real police serve notices physically — never through video calls', 'If you receive such a call: hang up immediately and call 1930 to report']
+      },
+      11: {
+        what: `A <b>deepfake / AI voice cloning scam</b> uses AI to clone the voice of a family member or colleague from just 3-5 seconds of audio obtained from social media videos. The cloned voice fabricates an emergency — accident, arrest, hospital — and demands immediate money.`,
+        stats: [
+          { num: '3 sec', lbl: 'Audio needed to clone a voice with AI' },
+          { num: '400%', lbl: 'Increase in AI voice fraud (2023-24)' },
+          { num: '₹640 Cr', lbl: 'AI fraud losses estimated in India' }
+        ],
+        scenarios: [
+          { title: 'Son\'s Hospital Voice', body: 'A Gurugram mother received a call from what sounded exactly like her son saying he was in an accident. She transferred ₹1.5 lakh before reaching her son — who was safe at work.' },
+          { title: 'CEO Wire Transfer', body: 'A Mumbai CFO received a WhatsApp voice message from what sounded like her CEO requesting an urgent ₹45 lakh vendor payment. The company lost the entire amount.' },
+          { title: 'Friend Stuck Abroad', body: 'Amit received a call from his best friend\'s voice saying he was stuck in Dubai needing ₹80,000. His friend was home in Pune the entire time.' }
+        ],
+        warnings: ['Always hang up and call the person back on their known number before sending money', 'Establish a family "safe word" that an AI cannot guess — your best defense', 'Take 60 seconds to verify — scammers rely on panic, not logic']
+      },
+      12: {
+        what: `A <b>bank KYC verification scam</b> mimics official bank communications claiming your account will be blocked unless you update KYC immediately. The fake page collects bank account numbers, Aadhaar, PAN, and critically — the OTP sent to your phone. With the OTP, criminals drain your account.`,
+        stats: [
+          { num: '₹856 Cr', lbl: 'KYC fraud losses in India' },
+          { num: '82%', lbl: 'Victims received threat via SMS/WhatsApp' },
+          { num: '30 min', lbl: 'Typical urgency window in KYC scams' }
+        ],
+        scenarios: [
+          { title: 'SBI KYC Update SMS', body: 'Sunita received an SMS with a link to "update SBI KYC within 2 hours." The page looked identical to SBI\'s. After entering her OTP, ₹35,000 was transferred.' },
+          { title: 'HDFC OTP Phone Call', body: 'A "HDFC KYC team" caller guided Mukesh through "verification." The caller had partial account information (from breaches) which built trust. Mukesh shared the OTP and lost ₹62,000.' },
+          { title: 'PAN-Aadhaar Linking', body: 'During PAN-Aadhaar linking panic, millions of fake SMS messages were sent. Many people submitted both documents on phishing sites, leading to identity theft.' }
+        ],
+        warnings: ['Banks do KYC updates through official apps or by visiting the branch — never through SMS links', 'The OTP is yours alone — sharing it with anyone, including "bank staff," instantly enables fraud', 'Call your bank directly on the number on the back of your card to verify any KYC request']
+      },
+      13: {
+        what: `A <b>social media phishing scam</b> targets Instagram/Facebook accounts by sending fake "account suspension" or "blue tick verification" notices. Victims are directed to fake login pages that steal credentials. Hijacked accounts are used to scam the victim's own followers.`,
+        stats: [
+          { num: '1.4M', lbl: 'Instagram accounts hacked in India' },
+          { num: '₹890', lbl: 'Average dark web price for Indian Instagram account' },
+          { num: '48 hrs', lbl: 'Time before hacked account is monetized' }
+        ],
+        scenarios: [
+          { title: 'Influencer Takeover', body: 'A Mumbai food blogger with 85k followers received a DM about copyright. She clicked and entered her password. Her account was used for a crypto scam within hours.' },
+          { title: 'Blue Tick Phishing', body: 'A Delhi photographer got an email from "Instagram Verified Support." He entered credentials. His account was sold to a scammer who changed the username.' },
+          { title: 'Business Page Ransom', body: 'A Hyderabad restaurant owner lost access to his Facebook page (12k followers) after fake copyright phishing. The hacker demanded ₹25,000 to restore access.' }
+        ],
+        warnings: ['Instagram, Facebook, and Meta NEVER ask for passwords through external links', 'Enable 2FA on all social accounts — it prevents 99% of credential theft', 'Legitimate platform communications appear inside the app, not external sites']
+      },
+      14: {
+        what: `An <b>electricity disconnection scam</b> uses fear of losing an essential service to pressure victims into making immediate payments through unofficial channels. Scammers impersonate BESCOM, MSEDCL, UPPCL, or other state utilities via SMS.`,
+        stats: [
+          { num: '₹234 Cr', lbl: 'Utility fraud losses in India' },
+          { num: '30 min', lbl: 'Typical "disconnection" deadline in scam SMS' },
+          { num: '3x', lbl: 'Spike in cases during summer months' }
+        ],
+        scenarios: [
+          { title: 'Mumbai MSEDCL SMS', body: 'Rajesh got an SMS saying his power would be cut in 30 minutes. He called the number, was guided to pay ₹4,800 via UPI to a personal ID. His real bill was ₹1,200.' },
+          { title: 'Elderly Phone Call', body: 'A 72-year-old Pune resident was told his meter had a fault requiring ₹6,500. He paid cash to a person who arrived with a fake ID.' },
+          { title: 'Duplicate Bill Phishing', body: 'A Bengaluru resident Googled her electricity bill. She clicked a fake BESCOM site that collected her consumer number and card details. ₹14,000 was deducted.' }
+        ],
+        warnings: ['Verify bills only at your state utility\'s official website — bookmark it now', 'Utility companies NEVER collect payments via personal UPI IDs', 'Call the number printed on your physical bill, not numbers from SMS messages']
+      },
+      15: {
+        what: `An <b>income tax refund scam</b> sends fake refund notifications claiming a tax refund is "approved" and needs bank details to process. Victims submit PAN, bank account, and IFSC details. These are used for identity theft, fraudulent loans, and financial fraud.`,
+        stats: [
+          { num: '₹480 Cr', lbl: 'Tax fraud / identity theft losses' },
+          { num: '5 min', lbl: 'Time to open a loan in victim\'s name with PAN+bank' },
+          { num: '24 hrs', lbl: 'Typical "claim window" used to create urgency' }
+        ],
+        scenarios: [
+          { title: 'SMS Tax Refund Link', body: 'Pradeep got SMS from "VM-ITAXIN" saying ₹24,500 refund was approved. He submitted PAN and bank details. A ₹4.8 lakh personal loan was taken in his name within days.' },
+          { title: 'ClearTax Impersonation', body: 'An email mimicking ClearTax told a CA her client\'s refund needed re-verification. She submitted details for 3 clients. All accounts were compromised.' },
+          { title: 'IT Department Fake Call', body: 'A Lucknow teacher was called about a ₹48,000 refund. She was guided through a fake site and shared her OTP. ₹52,000 was debited.' }
+        ],
+        warnings: ['Income tax refunds go directly to your pre-registered bank account — you never need to "claim" them', 'Check legitimate refund status only at incometax.gov.in — never through SMS links', 'PAN + bank account details together can enable loans, fake tax filings, and complete identity theft']
+      },
+
+      16: {
+        what: `A <b>corporate phishing scam</b> targets employees with fake IT department emails claiming their work account password needs immediate reset. Victims enter current credentials on a fake Microsoft 365 or Google Workspace page. With corporate credentials, attackers access emails and financial systems.`,
+        stats: [
+          { num: '$2.4B', lbl: 'BEC fraud global losses (FBI, 2023)' },
+          { num: '91%', lbl: 'Cyberattacks start with phishing email' },
+          { num: '19 days', lbl: 'Avg time before corporate breach detected' }
+        ],
+        scenarios: [
+          { title: 'CFO Wire Transfer Fraud', body: 'A Bengaluru startup\'s finance manager got an email from the "CEO" requesting an urgent ₹28 lakh vendor payment. No verification was done. Money went to a fraud account in Hong Kong.' },
+          { title: 'IT Password Reset', body: 'A Delhi law firm employee reset her password on a fake "Microsoft 365" page. Attackers spent 3 weeks reading confidential client emails.' },
+          { title: 'HR Data Breach', body: 'A Mumbai company\'s HR executive clicked a "payroll system update" link and entered her credentials. Salary, PAN, and bank details for all 340 employees were stolen.' }
+        ],
+        warnings: ['IT departments and Microsoft NEVER ask for your current password via email links', 'Enable MFA on all corporate accounts — it blocks 99.9% of credential theft', 'Always verify unusual requests by calling the sender on their official number']
+      },
+      17: {
+        what: `A <b>SIM swap / telecom scam</b> tricks victims into sharing their Aadhaar, mobile number, and OTP. With this information, fraudsters call the carrier and port the number to a new SIM they control. Once they have your number, they intercept all bank OTPs — bypassing every layer of mobile-based 2FA.`,
+        stats: [
+          { num: '₹320 Cr', lbl: 'SIM swap fraud losses in India' },
+          { num: '4 hrs', lbl: 'Avg time for accounts to be drained after SIM swap' },
+          { num: '15 min', lbl: 'Time to complete a fraudulent SIM port in India' }
+        ],
+        scenarios: [
+          { title: '5G Upgrade SIM Swap', body: 'Kiran got a call from "Jio 5G support" saying her SIM needed upgrading. She shared her Aadhaar and OTP. Her number was ported within 2 hours. By evening, ₹2.4 lakh was cleared from her HDFC account.' },
+          { title: 'Telecom Store Attack', body: 'A fraudster visited a Vodafone store with Rahul\'s Aadhaar details (from a data breach) and a fake ID. He got a replacement SIM. Rahul\'s accounts were emptied over 6 hours.' },
+          { title: 'Customer Care Scam', body: 'A caller claiming to be Airtel support convinced a businessman his SIM had a "network fault." He pressed 1 for "refresh" — this initiated a SIM port. His trading account was liquidated for ₹8.7 lakh.' }
+        ],
+        warnings: ['Telecom companies NEVER ask for OTPs over calls or messages to perform SIM upgrades', 'If your phone suddenly has no signal, call your carrier from another phone — you may be a SIM swap victim', 'Request your carrier add a SIM lock/port freeze requiring biometric verification for any SIM changes']
+      },
+      18: {
+        what: `A <b>fake scholarship scam</b> targets students with unsolicited "congratulations" messages claiming they have been selected for a government scholarship. The scam collects Aadhaar, bank details, and sometimes academic certificates — all valuable for identity theft.`,
+        stats: [
+          { num: '₹186 Cr', lbl: 'Education fraud losses in India' },
+          { num: '18-24', lbl: 'Most targeted age group (years)' },
+          { num: '400+', lbl: 'Fake scholarship portals detected' }
+        ],
+        scenarios: [
+          { title: 'NSP Fake Portal', body: 'A Class 12 student from Bihar got a WhatsApp forward about "PM Scholarship ₹50,000." She submitted Aadhaar, bank account, and marksheets on a fake portal. Her bank account was used to route fraud transactions for 3 months.' },
+          { title: 'College Fee Refund Fraud', body: 'During COVID, hundreds of engineering students got emails claiming their college fees would be refunded. They submitted bank details. Instead of refunds, ₹5,000-20,000 was debited via unauthorized transactions.' },
+          { title: 'Abroad Scholarship Fee', body: 'A Delhi postgraduate student was told she "won" a US university scholarship. The agency asked for ₹85,000 in "VISA processing fees." The agency vanished.' }
+        ],
+        warnings: ['All legitimate scholarships require you to APPLY — you cannot be selected without applying', 'Verify scholarships at scholarships.gov.in or your state\'s official education portal', 'Never share Aadhaar, bank details, or academic certificates on unverified websites']
+      },
+      19: {
+        what: `A <b>copyright violation account scam</b> sends threatening messages claiming your Facebook Page or Instagram account has violated copyright policies and will be deleted. Victims are directed to fake "Meta Support" pages that harvest passwords. Accounts are then sold or used for scam operations.`,
+        stats: [
+          { num: '2.1M', lbl: 'Facebook pages hijacked globally (2023)' },
+          { num: '48 hrs', lbl: 'Time before hijacked page is used for scams' },
+          { num: '₹25K', lbl: 'Ransom demanded on average for page return' }
+        ],
+        scenarios: [
+          { title: 'Restaurant Page Hijack', body: 'A Pune restaurant owner\'s verified Facebook Page (18k followers) was hijacked. The hacker changed the name to a crypto exchange and posted fake investment links.' },
+          { title: 'Politician Support Page', body: 'A political party\'s state support page admin clicked a "Meta Policy Violation" email. His credentials were stolen. The page was used to spread misinformation and request donations to a fake UPI ID for 3 days.' },
+          { title: 'Instagram Creator Ransom', body: 'A fashion influencer with 240k followers got a DM about copyright violation. After entering her password, she lost access. The hacker demanded ₹2.5 lakh to restore access.' }
+        ],
+        warnings: ['Meta and Instagram NEVER send copyright notices via DM from personal accounts', 'All legitimate platform policy notifications appear in your official notification center inside the app', 'Appeal real violations through the official Help Center — search for "Meta Help Center" on Google and navigate directly']
+      },
+      20: {
+        what: `A <b>fake customs / parcel fee scam</b> sends SMS or email claiming an international parcel is held at customs and requires a clearance fee. Most victims haven\'t ordered anything internationally. Even if you have, customs fees in India are NEVER collected via SMS payment links.`,
+        stats: [
+          { num: '₹165 Cr', lbl: 'Customs/parcel fraud losses in India' },
+          { num: '87%', lbl: 'Victims had NOT ordered anything internationally' },
+          { num: '₹500-5K', lbl: 'Typical fake customs fee range' }
+        ],
+        scenarios: [
+          { title: 'FedEx Customs SMS', body: 'Ananya received SMS from "FX-FEDEX" saying a parcel in her name was held at Delhi customs, requiring ₹1,950 clearance. She hadn\'t ordered anything but paid out of curiosity. Her card was then used for ₹23,000 in international purchases.' },
+          { title: 'Amazon Global Scam', body: 'A Bengaluru family who had recently shopped on Amazon Global received a fake customs email. They paid ₹2,800 via card. The "tracking" was fake; the original order arrived fine a week later.' },
+          { title: 'Gift from Abroad', body: 'An NRI sent a gift parcel to his parents in Kolkata. Scammers intercepted the tracking number (visible on public tracking sites) and called the parents demanding ₹4,500 customs. The real courier arrived the next day with no charge.' }
+        ],
+        warnings: ['Genuine customs duties are assessed and collected at delivery or through official CBIC portals — never via SMS payment links', 'Always track parcels directly on the courier\'s official website using the tracking number from the sender', 'If you receive a customs notice, verify by calling the courier company directly on their official number']
+      },
+      21: {
+        what: `A <b>disaster relief / charity scam</b> exploits human empathy during floods, earthquakes, cyclones, or other crises by creating fake relief fund pages and forwarding emotional appeals on WhatsApp. Donations go directly into the fraudster\'s account. No aid reaches any victims.`,
+        stats: [
+          { num: '₹92 Cr', lbl: 'Charity fraud during Indian disasters' },
+          { num: '72 hrs', lbl: 'Time for fake relief funds to appear after disaster' },
+          { num: '1,200+', lbl: 'Fake charity campaigns after 2023 floods' }
+        ],
+        scenarios: [
+          { title: 'Kerala Flood Chain', body: 'During Kerala floods, a WhatsApp forward with emotional video and UPI ID went viral, collecting "donations for flood victims." The account received ₹2.3 crore. No relief was organized. The holder was arrested 6 months later.' },
+          { title: 'Fake UNICEF Campaign', body: 'A Facebook page titled "UNICEF India Emergency Fund" ran ads during COVID asking for ₹500 donations. 14,000 people donated before the page was taken down. UNICEF confirmed no such campaign.' },
+          { title: 'Earthquake Relief', body: 'After the 2023 Turkey earthquake, several Indian WhatsApp groups circulated donation links. Victims donated ₹1,000-10,000 each. None of the funds went to any relief organization.' }
+        ],
+        warnings: ['Verify charities at ngodarpan.niti.gov.in before donating — it lists all legitimate registered NGOs', 'Donate through established organizations: PM National Relief Fund (pmrdf.in), Red Cross, or state CM Relief Fund — official sites only', 'Emotional urgency in donation requests is a manipulation tactic — legitimate charities welcome your time to verify them']
+      },
+      22: {
+        what: `A <b>fake public Wi-Fi / evil twin attack</b> sets up a rogue Wi-Fi network with a name like "Airport_Free_WiFi" or "Hotel_Guest_Net" and creates a fake login portal that requests your email and password. Once captured, the credentials give attackers access to your email — which can be used to reset passwords on every other account linked to that email.`,
+        stats: [
+          { num: '25%', lbl: 'Public Wi-Fi hotspots globally are unsecured/rogue' },
+          { num: '6 min', lbl: 'Avg time for email breach to spread to 5+ accounts' },
+          { num: '₹310 Cr', lbl: 'Credential theft via public networks in India' }
+        ],
+        scenarios: [
+          { title: 'Airport Rogue Hotspot', body: 'A Mumbai businessman connected to "MumbaiAirport_FreeWifi." The captive portal asked for his Gmail to log in. Within 3 hours, his Gmail was accessed, his bank account reset, and ₹1.8 lakh transferred.' },
+          { title: 'Café Evil Twin', body: 'A college student connected to "CafeCoffeeDay_Free" (a rogue hotspot). She entered her password on a login page. Her Instagram, Snapchat, and email were compromised within hours.' },
+          { title: 'Hotel Wi-Fi Theft', body: 'A corporate traveller connected to "MarriottGuest." The portal requested work email credentials. His company\'s Microsoft 365 account was accessed, and sensitive client data was downloaded over 4 days.' }
+        ],
+        warnings: ['Never enter your email password on any Wi-Fi login portal — legitimate public Wi-Fi only asks for a phone number or room number, never a password', 'Use a VPN whenever connecting to any public Wi-Fi network — it encrypts all your traffic', 'Ask hotel/café staff for the exact name of their Wi-Fi network before connecting — rogue networks often have very similar names']
+      }
+    };
+
+    // ─── SHOW INFO PAGE ─────────────────────────────────────────────────────────
+    function showInfoPage(id) {
+      const m = MODULES.find(x => x.id === id);
+      const info = SCAM_INFO[id];
+      if (!info) { startModule(id); return; }
+
+      document.getElementById('info-risk-display').textContent = state.risk;
+      document.getElementById('info-done-display').textContent = state.completed.length;
+
+      const diffLabel = m.diff === 'high' ? 'High Risk' : m.diff === 'med' ? 'Medium Risk' : 'Low Risk';
+      const diffColor = m.diff === 'high' ? 'rgba(239,68,68,.15)' : m.diff === 'med' ? 'rgba(251,191,36,.15)' : 'rgba(34,197,94,.15)';
+      const diffTextColor = m.diff === 'high' ? '#fca5a5' : m.diff === 'med' ? '#fde68a' : '#86efac';
+
+      const statsHTML = info.stats.map(s => `
+        <div class="info-stat">
+          <div class="info-stat-num">${eh(s.num)}</div>
+          <div class="info-stat-lbl">${eh(s.lbl)}</div>
+        </div>`).join('');
+
+      const scenariosHTML = info.scenarios.map((s, i) => `
+        <div class="info-scenario">
+          <div class="info-scenario-num">Real-Life Case ${i + 1}</div>
+          <div class="info-scenario-title">📌 ${eh(s.title)}</div>
+          <div class="info-scenario-body">${eh(s.body)}</div>
+        </div>`).join('');
+
+      const warningsHTML = info.warnings.map(w => `
+        <div class="info-warning-box">
+          <span class="info-warning-icon">⚠️</span>
+          <span>${eh(w)}</span>
+        </div>`).join('');
+
+      document.getElementById('info-content').innerHTML = `
+        <div class="info-back" onclick="goHome()">← Back to Modules</div>
+        <div class="info-hero">
+          <div class="info-icon-big">${eh(m.icon)}</div>
+          <div class="info-hero-text">
+            <div>
+              <div class="info-tag">${eh(m.tag)}</div>
+              <span class="info-diff-badge" style="background:${diffColor};color:${diffTextColor}">${diffLabel}</span>
+            </div>
+            <div class="info-title">${eh(m.title)}</div>
+            <div class="info-subtitle">${eh(m.desc)}</div>
+          </div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">What Is This Scam?</div>
+          <div class="info-what">${info.what}</div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">By The Numbers</div>
+          <div class="info-stat-row">${statsHTML}</div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">Real-Life Scenarios</div>
+          ${scenariosHTML}
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">Key Warning Signs To Remember</div>
+          ${warningsHTML}
+        </div>
+
+        <div class="info-cta-area">
+          <div class="info-cta-heading">Ready to Test Your Awareness?</div>
+          <div class="info-cta-sub">
+            You've learned how this scam works and seen real-life cases.<br>
+            Now experience the simulation — try to spot the red flags before clicking submit.
+          </div>
+          <button class="info-cta-btn" onclick="startModule(${id})">
+            🚨 Enter the Simulation →
+          </button>
+        </div>
+      `;
+      go('info');
+    }
+
+
 
     // ─── START MODULE ────────────────────────────────────────────────────────────
 
@@ -5037,7 +5691,7 @@
                 difficulty: a.difficulty || '—'
               })),
               byModule: [],
-              sessions: sessions.sessions || [],users: users.users || []
+              sessions: sessions.sessions || [], users: users.users || []
             };
 
             adminData = formatted;
