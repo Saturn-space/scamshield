@@ -4173,7 +4173,7 @@
         sessions: sessionList
       };
     }
-    saveState();
+    
     // ── Delete helpers ─────────────────────────────────────────────────────────
     function localDelSession(sid) {
       const sessions = getAllSessions(); delete sessions[sid]; lsSet(LS_SESSIONS, sessions);
