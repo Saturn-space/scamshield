@@ -5616,6 +5616,7 @@ updateProgressDisplay();
       const m = MODULES.find(m => m.id === id);
       state.currentModule = m; state.exposedData = [];
       updateRiskMeter(10); state.risk = Math.max(state.risk, 10); updateNav();
+      saveState();
       document.getElementById('scam-nav-title').textContent = m.title;
       document.getElementById('scam-back').onclick = () => { go('home'); renderModules(); };
       renderScamPage(m);
@@ -5836,6 +5837,7 @@ updateProgressDisplay();
       const filled = m.fields.filter((_, i) => (document.getElementById('field-' + i)?.value || '').length > 1).length;
       const pct = 10 + Math.round((filled / m.fields.length) * 60);
       updateRiskMeter(pct); state.risk = Math.max(state.risk, pct); updateNav();
+      saveState();
     }
 
     function submitScam() {
@@ -5864,6 +5866,7 @@ updateProgressDisplay();
       }
       clearInterval(timerInt);
       updateRiskMeter(100); state.risk = Math.min(state.risk + 30, 999); updateNav();
+      saveState();
       logAttempt({ submitted: true, risk_score: state.risk });
       document.getElementById('alert-title').textContent = '🚨 ' + m.tag + ' — Fraud Alert!';
       document.getElementById('alert-msg').textContent = m.reveal;
@@ -5926,6 +5929,7 @@ updateProgressDisplay();
     function showCert() {
       const m = state.currentModule;
       if (!state.completed.includes(m.id)) state.completed.push(m.id);
+      saveState();
       updateNav();
       const pct = Math.round((state.quizScore / m.quiz.length) * 100);
       logAttempt({ submitted: true, quiz_score: state.quizScore, quiz_total: m.quiz.length, risk_score: state.risk });
