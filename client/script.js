@@ -1,0 +1,3612 @@
+
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const LS_SESSIONS = 'ss_sessions';
+const LS_ATTEMPTS = 'ss_attempts';
+const LS_CUR_SID = 'ss_session';
+const LS_VERSION = 'ss_data_version';
+const CURRENT_SCHEMA_VERSION = 2;
+
+function lsGet(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
+}
+function lsSet(key, val) {
+    try {
+        localStorage.setItem(key, JSON.stringify(val));
+        return { ok: true };
+    } catch (e) {
+        if (e && e.name === 'QuotaExceededError') {
+            console.warn('localStorage quota exceeded for', key);
+            return { ok: false, err: 'quota' };
+        }
+        return { ok: false, err: e?.message || 'unknown' };
+    }
+}
+
+function runMigrations() {
+    const stored = parseInt(localStorage.getItem(LS_VERSION) || '0', 10);
+    if (stored === 0) {
+        localStorage.setItem(LS_VERSION, String(CURRENT_SCHEMA_VERSION));
+        return;
+    }
+    if (stored < CURRENT_SCHEMA_VERSION) {
+        localStorage.setItem(LS_VERSION, String(CURRENT_SCHEMA_VERSION));
+        console.log(`Migrated schema to v${CURRENT_SCHEMA_VERSION}`);
+    }
+}
+runMigrations();
+
+function getAllSessions() { return lsGet(LS_SESSIONS) || {}; }
+function getAllAttempts() { return lsGet(LS_ATTEMPTS) || []; }
+
+function saveSession(obj) {
+    const sessions = getAllSessions();
+    sessions[obj.session_id] = obj;
+    return lsSet(LS_SESSIONS, sessions);
+}
+
+function saveAttempt(obj) {
+    const attempts = getAllAttempts();
+    const idx = attempts.findIndex(a => a.session_id === obj.session_id && a.module_id === obj.module_id);
+    if (idx >= 0) attempts[idx] = { ...attempts[idx], ...obj, completed_at: new Date().toISOString() };
+    else attempts.push({ ...obj, completed_at: new Date().toISOString() });
+    const r = lsSet(LS_ATTEMPTS, attempts);
+    if (!r.ok && r.err === 'quota') {
+        showToast('Storage limit reached — export & wipe old data in Admin', 'err');
+    }
+    return r;
+}
+
+// ── Session API (replaces apiPost /session/start) ──────────────────────────
+// ── Session API (Hybrid: API first, localStorage fallback) ────────────────
+async function localSessionStart(existing_id) {
+    if (API_ENABLED) {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            const userToken = localStorage.getItem(LS_USER_TOKEN);
+            if (userToken) {
+                headers['Authorization'] = 'Bearer ' + userToken;
+            }
+
+            const res = await fetch(API_BASE + '/session/start', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ session_id: existing_id || null })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                // Also save to localStorage as cache
+                const sessions = getAllSessions();
+                if (!sessions[data.session_id]) {
+                    sessions[data.session_id] = {
+                        session_id: data.session_id,
+                        started_at: new Date().toISOString(),
+                        last_seen: new Date().toISOString()
+                    };
+                    lsSet(LS_SESSIONS, sessions);
+                }
+                return { ok: true, session_id: data.session_id, from_api: true };
+            }
+        } catch (e) {
+            console.warn('API unavailable, using localStorage:', e.message);
+        }
+    }
+
+    // Fallback to localStorage
+    const sessions = getAllSessions();
+    if (existing_id && sessions[existing_id]) {
+        sessions[existing_id].last_seen = new Date().toISOString();
+        lsSet(LS_SESSIONS, sessions);
+        return { ok: true, session_id: existing_id, from_api: false };
+    }
+    const newId = 'ss_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    saveSession({ session_id: newId, started_at: new Date().toISOString(), last_seen: new Date().toISOString() });
+    return { ok: true, session_id: newId, from_api: false };
+}
+
+// ── Attempt API (replaces apiPost /module/attempt) ─────────────────────────
+// ── Attempt API (Hybrid: API first, localStorage fallback) ────────────────
+async function localLogAttempt(data) {
+    if (API_ENABLED && state.sessionId) {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            const userToken = localStorage.getItem(LS_USER_TOKEN);
+            if (userToken) {
+                headers['Authorization'] = 'Bearer ' + userToken;
+            }
+
+            const res = await fetch(API_BASE + '/attempt', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(data)
+            });
+            const json = await res.json();
+            if (json.ok) {
+                return { ok: true, from_api: true };
+            }
+        } catch (e) {
+            console.warn('API unavailable, saving to localStorage:', e.message);
+        }
+    }
+
+    // Fallback to localStorage
+    saveAttempt(data);
+    return { ok: true, from_api: false };
+}
+
+// ── Admin stats API (replaces apiGet /admin/stats + /admin/sessions) ───────
+function localAdminStats() {
+    // Check if admin is logged in
+    if (API_ENABLED && !localStorage.getItem(LS_ADMIN_TOKEN)) {
+        return { ok: false, err: 'Admin login required', need_auth: true };
+    }
+    const attempts = getAllAttempts();
+    const sessions = getAllSessions();
+
+    const sessionIds = [...new Set(attempts.map(a => a.session_id))];
+    const submissions = attempts.filter(a => a.submitted);
+    const completions = submissions.length;
+    const avgRisk = completions ? Math.round(submissions.reduce((s, a) => s + (a.risk_score || 0), 0) / completions) : 0;
+
+    // recent: sorted newest first
+    const recent = [...attempts]
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
+        .slice(0, 50)
+        .map(a => ({
+            ...a,
+            module_title: MODULES[a.module_id]?.title || '—',
+            module_tag: MODULES[a.module_id]?.tag || '—',
+            difficulty: MODULES[a.module_id]?.diff || '—',
+        }));
+
+    // by module
+    const modMap = {};
+    attempts.forEach(a => {
+        if (!modMap[a.module_id]) modMap[a.module_id] = { module_id: a.module_id, module_title: MODULES[a.module_id]?.title || '—', module_tag: MODULES[a.module_id]?.tag || '—', difficulty: MODULES[a.module_id]?.diff || '—', attempts: 0, completions: 0, risk_sum: 0, quiz_sum: 0, quiz_count: 0 };
+        const m = modMap[a.module_id];
+        m.attempts++;
+        if (a.submitted) { m.completions++; m.risk_sum += a.risk_score || 0; }
+        if (a.quiz_total > 0) { m.quiz_sum += Math.round((a.quiz_score / a.quiz_total) * 100); m.quiz_count++; }
+    });
+    const byModule = Object.values(modMap).map(m => ({ ...m, avg_risk: m.completions ? Math.round(m.risk_sum / m.completions) : 0, avg_quiz_pct: m.quiz_count ? Math.round(m.quiz_sum / m.quiz_count) : 0 }));
+
+    // sessions list
+    const sessionList = Object.values(sessions).map(s => {
+        const sAttempts = attempts.filter(a => a.session_id === s.session_id);
+        const done = [...new Set(sAttempts.filter(a => a.submitted).map(a => a.module_id))].length;
+        const totalRisk = sAttempts.reduce((sum, a) => Math.max(sum, a.risk_score || 0), 0);
+        const quizScore = sAttempts.reduce((sum, a) => sum + (a.quiz_score || 0), 0);
+        return { ...s, completed_modules: done, total_risk_score: totalRisk, quiz_score: quizScore, ip_address: '—' };
+    }).sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+
+    return {
+        ok: true,
+        totals: { total_sessions: Object.keys(sessions).length, total_submissions: submissions.length, total_completions: completions, avg_risk_score: avgRisk },
+        recent,
+        byModule,
+        sessions: sessionList
+    };
+}
+
+// ── Delete helpers ─────────────────────────────────────────────────────────
+function localDelSession(sid) {
+    const sessions = getAllSessions(); delete sessions[sid]; lsSet(LS_SESSIONS, sessions);
+    const attempts = getAllAttempts().filter(a => a.session_id !== sid); lsSet(LS_ATTEMPTS, attempts);
+    return { ok: true };
+}
+function localDelModule(mid) {
+    const attempts = getAllAttempts().filter(a => a.module_id !== mid); lsSet(LS_ATTEMPTS, attempts);
+    return { ok: true };
+}
+function localWipeAll() {
+    lsSet(LS_SESSIONS, {}); lsSet(LS_ATTEMPTS, []);
+    return { ok: true };
+}
+
+// ── Export helper ──────────────────────────────────────────────────────────
+function localExportJSON() {
+    const data = { sessions: getAllSessions(), attempts: getAllAttempts(), exported_at: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'scamshield-export-' + Date.now() + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ─── MODULES DATA ──────────────────────────────────────────────────────────
+const MODULES = [
+    {
+        id: 0, icon: '💰', title: 'Instant Loan Scam', desc: 'Approve ₹5 lakh loan without verification — just pay processing fee', diff: 'high', tag: 'Financial Fraud',
+        url: 'fastloan-india.co.in', badge: 'Loan Approved!', amount: '₹5,00,000', amountLabel: 'Personal Loan Approved',
+        fee: 'Processing Fee: ₹2,000', feeNote: 'Pay fee to release funds',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'mobile', p: 'Mobile Number', t: 'tel' }, { n: 'aadhaar', p: 'Aadhaar Number', t: 'text' }, { n: 'fee', p: 'Card No. for Fee Payment', t: 'text' }],
+        exposed: ['Full Name', 'Mobile Number', 'Aadhaar Number', 'Card Details'],
+        reveal: 'You just applied for a fake loan. Real lenders NEVER approve loans before KYC verification or charge upfront fees.',
+        flags: ['No registered NBFC license shown', 'Loan approved in 30 seconds without verification', 'Upfront fee demanded before disbursement', 'No RBI registration number'],
+        tips: ['Legitimate lenders verify income, CIBIL score, and documents before approval', 'Processing fees are deducted from disbursed amount — never paid upfront', 'Always check RBI NBFC registry at rbi.org.in', 'Report at cybercrime.gov.in or 1930'],
+        quiz: [{ q: 'What is the first red flag of a loan scam?', opts: ['Low interest rate', 'Loan approved without any verification', 'Long repayment period', 'Friendly customer service'], ans: 1, exp: 'Legitimate loans require extensive KYC and credit checks. Instant approval is always a scam signal.' }, { q: 'Where should you verify an NBFC lender?', opts: ['Google search', 'RBI NBFC registry at rbi.org.in', 'Their website', 'Social media'], ans: 1, exp: 'RBI maintains an official list of registered NBFCs. Always verify.' }, { q: 'How are legitimate processing fees charged?', opts: ['Paid via UPI before disbursement', 'Collected as cash', 'Deducted from the disbursed loan amount', 'Paid via gift cards'], ans: 2, exp: 'Real lenders deduct fees from the loan — they never ask for upfront payments.' }]
+    },
+    {
+        id: 1, icon: '💼', title: 'Fake Interview Fee Scam', desc: 'Cyber Analyst job ₹12 LPA — submit documents and pay ₹200 registration', diff: 'med', tag: 'Job Fraud',
+        url: 'hiring-cyberjobs.in', badge: 'You\'re Selected!', amount: '₹12 LPA', amountLabel: 'Cyber Security Analyst',
+        fee: 'Registration Fee: ₹200', feeNote: 'Secure your slot before it expires',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'resume', p: 'Upload Resume (Link)', t: 'text' }, { n: 'aadhaar', p: 'Aadhaar Number', t: 'text' }, { n: 'pan', p: 'PAN Card Number', t: 'text' }, { n: 'fee', p: 'Pay ₹200 Registration Fee (UPI)', t: 'text' }],
+        exposed: ['Name', 'Resume (Work History)', 'Aadhaar Number', 'PAN Number', 'Payment Details'],
+        reveal: 'You handed over PAN + Aadhaar — enough for identity theft, fraudulent loan applications, and SIM swaps.',
+        flags: ['No official company website or verified email domain', 'Fee charged before interview happens', 'Requests Aadhaar + PAN together — perfect for identity theft', 'No HR contact name or office address'],
+        tips: ['Legitimate companies never charge registration or interview fees', 'Verify the company on MCA21', 'Check company reviews on Glassdoor or LinkedIn', 'Never share Aadhaar + PAN in the same form'],
+        quiz: [{ q: 'Which document combination is most dangerous to share with fake recruiters?', opts: ['Resume + Photo', 'Aadhaar + PAN together', 'Degree certificates', 'LinkedIn profile'], ans: 1, exp: 'Aadhaar + PAN together enables identity theft, fraudulent loans, and SIM swap attacks.' }, { q: 'What should you do before submitting to a job portal?', opts: ['Pay the fee quickly', 'Verify company on MCA21 or LinkedIn', 'Trust Google reviews', 'Accept the offer immediately'], ans: 1, exp: 'MCA21 shows registered companies in India. Fake companies won\'t appear there.' }, { q: 'Legitimate companies charge interview fees:', opts: ['Only for senior roles', 'For government jobs', 'Never', 'Always for tech jobs'], ans: 2, exp: 'No legitimate employer ever charges candidates for interviews or registration.' }]
+    },
+    {
+        id: 2, icon: '📱', title: 'Too-Good-To-Be-True Phone Deal', desc: 'iPhone 16 Pro for ₹2,999 — today only! Enter address + card.', diff: 'high', tag: 'E-Commerce Fraud',
+        url: 'apple-deals-india.shop', badge: 'Flash Sale Live!', amount: '₹2,999', amountLabel: 'iPhone 16 Pro (Was ₹1,39,900)',
+        fee: 'Pay Now to Reserve', feeNote: 'Only 3 units left!',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'address', p: 'Delivery Address', t: 'text' }, { n: 'card', p: 'Card Number', t: 'text' }, { n: 'expiry', p: 'Card Expiry (MM/YY)', t: 'text' }, { n: 'cvv', p: 'CVV', t: 'text' }],
+        exposed: ['Full Card Number', 'Expiry Date', 'CVV', 'Home Address'],
+        reveal: 'You just handed over complete card details. This enables full card cloning and fraudulent purchases.',
+        flags: ['URL ends in .shop — not apple.com', 'Price 98% below MRP is impossible', 'Urgency: "Only 3 units left"', 'No seller details, return policy, or GST number'],
+        tips: ['Apple sells officially only at apple.com/in or authorised resellers', 'Prices 90%+ below MRP are always scams', 'CVV should NEVER be entered on unknown sites', 'Use virtual cards for online shopping'],
+        quiz: [{ q: 'What is the safest way to buy Apple products in India?', opts: ['Facebook Marketplace', 'Telegram groups', 'apple.com/in or authorised resellers', 'WhatsApp deals'], ans: 2, exp: 'Apple has an official India store and authorized retail partners. Never buy from unverified sites.' }, { q: 'A product priced 95% below MRP is:', opts: ['A genuine clearance sale', 'A scam', 'A manufacturer defect', 'A beta product'], ans: 1, exp: 'No legitimate seller can price genuine Apple products 95% below MRP — it\'s always fraud.' }, { q: 'Which detail should you NEVER share online?', opts: ['Email address', 'Phone number', 'CVV of your credit card', 'Name'], ans: 2, exp: 'CVV is a security code that should only be used on secure, verified checkout pages.' }]
+    },
+    {
+        id: 3, icon: '🥇', title: 'Fake Gold Coin Investment', desc: '24K gold coin market value ₹75,000 — get it for ₹4,999.', diff: 'med', tag: 'Investment Fraud',
+        url: 'goldcoin-offer24k.com', badge: 'Certified 24K Gold', amount: '₹4,999', amountLabel: '24K Gold Coin (Market ₹75,000)',
+        fee: 'Order Now — Offer Ends Soon', feeNote: 'BIS Hallmarked (claimed)',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'address', p: 'Delivery Address', t: 'text' }, { n: 'upi', p: 'UPI ID for Refund if Unavailable', t: 'text' }],
+        exposed: ['Name', 'Home Address', 'UPI ID'],
+        reveal: 'You ordered fake gold. The "coin" is brass-plated. Your UPI ID can be used to initiate payment requests.',
+        flags: ['No BIS hallmark certificate shown', 'Price is 93% below market rate', 'No seller GST number or return policy', '"Limited stock" creates artificial urgency'],
+        tips: ['Buy gold only from RBI-authorised dealers or bank gold schemes', 'Always verify BIS hallmark at bis.gov.in', 'Sovereign Gold Bonds are the safest gold investment', 'Never share UPI ID as refund destination — it can be misused'],
+        quiz: [{ q: 'Where should you buy certified gold in India?', opts: ['WhatsApp groups', 'Facebook Marketplace', 'Banks or BIS-hallmarked jewellers', 'Telegram channels'], ans: 2, exp: 'RBI-authorised dealers and banks are the only safe sources for gold purchases in India.' }, { q: 'BIS hallmark can be verified at:', opts: ['The seller\'s website', 'bis.gov.in', 'Google', 'Social media'], ans: 1, exp: 'BIS (Bureau of Indian Standards) maintains an official registry of hallmarked products.' }, { q: 'What can fraudsters do with your UPI ID?', opts: ['Nothing — it\'s only for receiving', 'Send you money only', 'Initiate collect requests to trick you', 'Block your account'], ans: 2, exp: 'Fraudsters use collect/request features to trick victims into entering PIN and approving payments.' }]
+    },
+    {
+        id: 4, icon: '🎰', title: 'Lucky Draw Entry Fee', desc: 'Win BMW, iPhone, or ₹10 Lakhs cash. Entry fee just ₹50.', diff: 'low', tag: 'Lottery Fraud',
+        url: 'india-lucky-draw2025.in', badge: 'YOU HAVE BEEN SELECTED!', amount: '₹10,00,000', amountLabel: 'Grand Prize Pool',
+        fee: 'Entry Fee: ₹50', feeNote: 'Only 2 entries left at this price!',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'mobile', p: 'Mobile Number', t: 'text' }, { n: 'upi', p: 'UPI ID to Receive Winnings', t: 'text' }],
+        exposed: ['Name', 'Mobile Number', 'UPI ID'],
+        reveal: 'There is no draw. Once you pay ₹50, you get "You almost won — try again for ₹200." The cycle never ends.',
+        flags: ['You "won" without entering any contest', 'Pressure: "only 2 entries left"', 'No organiser name or registration', 'RBI and Govt of India prohibit paid lottery schemes except state lotteries'],
+        tips: ['Online lotteries requiring upfront payment are illegal in India (except state lotteries)', 'No one "wins" a contest they never entered', 'Report at 1930 (National Cyber Helpline)', 'The prize amount always grows with each refusal'],
+        quiz: [{ q: 'What happens after you pay the initial ₹50 entry fee?', opts: ['You receive your winnings', 'You get asked to pay more fees repeatedly', 'A courier arrives with your prize', 'The organiser contacts you via email'], ans: 1, exp: 'This is advance fee fraud. After the first payment, requests escalate to ₹200, ₹500, ₹2000 etc.' }, { q: 'Online lottery schemes requiring upfront payment are:', opts: ['Legal if registered', 'Illegal in India except state lotteries', 'Only legal if over ₹100 entry fee', 'Legal if prize is physical'], ans: 1, exp: 'The Prize Chits and Money Circulation Schemes (Banning) Act 1978 prohibits such schemes.' }, { q: 'If you "won" a prize you never entered, it is:', opts: ['Your lucky day', 'A scam — always', 'A marketing promotion', 'A government scheme'], ans: 1, exp: 'You cannot win contests you never participated in. Unsolicited "wins" are always scams.' }]
+    },
+    {
+        id: 5, icon: '💳', title: 'Credit Card Discount Scam', desc: '90% OFF sale — verify your card to unlock exclusive discounts.', diff: 'high', tag: 'Card Fraud',
+        url: 'hdfc-exclusive-offers.net', badge: 'Exclusive Offer for You!', amount: '90% OFF', amountLabel: 'All Products — Limited Time',
+        fee: 'Verify Card to Activate', feeNote: 'Enter card details to confirm identity',
+        fields: [{ n: 'name', p: 'Cardholder Name', t: 'text' }, { n: 'card', p: 'Card Number (16 digits)', t: 'text' }, { n: 'expiry', p: 'Expiry Date', t: 'text' }, { n: 'cvv', p: 'CVV', t: 'text' }, { n: 'otp', p: 'OTP sent to your mobile', t: 'text' }],
+        exposed: ['Cardholder Name', 'Full Card Number', 'Expiry Date', 'CVV', 'OTP'],
+        reveal: 'You gave them everything including OTP — complete card compromise. Fraudsters can now make unlimited transactions.',
+        flags: ['Domain is hdfc-offers.net NOT hdfc.com', 'Banks NEVER ask for CVV or OTP through websites', '90% discount is impossible for a real bank offer', 'No HTTPS padlock or company registration'],
+        tips: ['Banks NEVER ask for OTP, CVV, or full card number', 'Always access banking at the official domain', 'Report card fraud immediately by calling the number on your card', 'Enable transaction alerts and set spending limits'],
+        quiz: [{ q: 'Your bank will NEVER ask for:', opts: ['Your account number', 'Your registered mobile', 'Your CVV and OTP together', 'Your name'], ans: 2, exp: 'Banks never ask for CVV, PIN, or OTP via any channel. Anyone asking is a fraudster.' }, { q: 'How do you identify the real bank website?', opts: ['Google the bank name', 'Check the URL exactly matches the official domain', 'Look for a nice logo', 'Check if it has HTTPS'], ans: 1, exp: 'Always manually type the official URL. Phishing sites mimic logos and even use HTTPS certificates.' }, { q: 'You receive an OTP you did not request. You should:', opts: ['Enter it on the site that asked', 'Call your bank immediately', 'Wait to see what happens', 'Share it with the caller'], ans: 1, exp: 'An unrequested OTP means someone is trying to use your card. Call your bank immediately.' }]
+    },
+    {
+        id: 6, icon: '🎁', title: 'Free Gift Delivery Scam', desc: 'You\'ve won a Mixer Grinder! Pay ₹99 delivery charge to receive it.', diff: 'low', tag: 'Delivery Fraud',
+        url: 'giftsdelivery-india.in', badge: 'Congratulations!', amount: 'Free Gift', amountLabel: 'Bajaj Mixer Grinder',
+        fee: 'Delivery Fee: ₹99', feeNote: 'Pay to confirm your address',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'address', p: 'Complete Delivery Address', t: 'text' }, { n: 'card', p: 'Card Details for ₹99', t: 'text' }],
+        exposed: ['Full Name', 'Home Address', 'Card Details'],
+        reveal: 'No gift is coming. The ₹99 is just the start — they now have your card details for larger charges.',
+        flags: ['You won a gift you never registered for', 'Real companies never charge delivery for prizes', 'Card details for ₹99 enables any amount to be charged', 'No prize organizer name, location, or registration'],
+        tips: ['Legitimate prizes from companies have official communication on company letterhead', 'Winners of real contests are verified through official channels', 'Never pay to "claim" a prize', 'Your card details entered once can be charged repeatedly'],
+        quiz: [{ q: 'Why do scammers charge ₹99 instead of a large amount?', opts: ['Because the gift costs that much to deliver', 'Small amounts feel harmless and lower suspicion', 'It\'s a government tax', 'To cover packaging'], ans: 1, exp: 'Small charges reduce suspicion while capturing card details. They then attempt larger charges.' }, { q: 'A genuine company prize requires you to:', opts: ['Pay delivery charges', 'Verify via official channels only', 'Share card details', 'Pay registration'], ans: 1, exp: 'Real prizes are verified through official company communications — never through random websites.' }, { q: 'After entering card details for ₹99, the fraudster can:', opts: ['Only charge ₹99', 'Charge any amount at any time', 'Only do 1 transaction', 'Nothing'], ans: 1, exp: 'Once card details are stored by fraudsters, they can attempt charges at any time and amount.' }]
+    },
+    {
+        id: 7, icon: '⭐', title: 'Reward Points Expiry Scam', desc: 'Your reward points worth ₹5,000 expire today. Redeem via our app.', diff: 'med', tag: 'Malware/App Fraud',
+        url: 'rewardpoints-redeem.app', badge: 'Your Points Expire TODAY', amount: '₹5,000', amountLabel: 'Reward Points — Use Before Midnight',
+        fee: 'Install App to Redeem', feeNote: 'Available on direct download only',
+        fields: [{ n: 'mobile', p: 'Registered Mobile Number', t: 'tel' }, { n: 'bank', p: 'Bank Name', t: 'text' }, { n: 'app', p: 'App Install Confirmation Code', t: 'text' }],
+        exposed: ['Mobile Number', 'Bank Name', 'Device Access (via App)'],
+        reveal: 'The app is malware. Once installed, it reads your SMS (OTPs), monitors banking apps, and can take screenshots.',
+        flags: ['Real bank apps are ONLY on Play Store/App Store — never side-loaded', 'Urgency: "expire tonight" forces hasty action', 'Official bank apps never send APK download links', 'Sideloaded apps bypass Google Play Protect'],
+        tips: ['ONLY install banking apps from Google Play Store or Apple App Store', 'Banks never send APK download links via SMS/WhatsApp', 'Revoke permissions of suspicious apps immediately in Settings', 'Report malware apps to cert-in.org.in'],
+        quiz: [{ q: 'Where should you ONLY download banking apps from?', opts: ['SMS links', 'WhatsApp links', 'Official Play Store or App Store', 'Bank website APK'], ans: 2, exp: 'Only Google Play Store and Apple App Store verify app safety. Sideloaded apps bypass all security.' }, { q: 'A sideloaded malicious banking app can:', opts: ['Only show ads', 'Read your OTPs and banking credentials', 'Just track location', 'Only access contacts'], ans: 1, exp: 'Malicious apps can read SMS (OTPs), log keystrokes, take screenshots, and drain accounts.' }, { q: 'Real bank reward points are redeemed:', opts: ['In 24 hours only', 'Through the official bank app only', 'Via separate download', 'By calling customer care'], ans: 1, exp: 'Banks provide redemption only through their official, verified apps — never through third-party downloads.' }]
+    },
+    {
+        id: 8, icon: '🏠', title: 'Work From Home Scam', desc: 'Earn ₹5,000 daily doing simple data entry. No experience needed.', diff: 'med', tag: 'Job Fraud',
+        url: 'wfh-earnindia.com', badge: 'Hiring Now!', amount: '₹5,000/day', amountLabel: 'Data Entry — Work From Home',
+        fee: 'Registration Fee: ₹500', feeNote: 'Refundable after first task completion',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'mobile', p: 'WhatsApp Number', t: 'tel' }, { n: 'bank', p: 'Bank Account for Payments', t: 'text' }, { n: 'fee', p: 'Registration Fee ₹500 (UPI)', t: 'text' }],
+        exposed: ['Name', 'WhatsApp Number', 'Bank Account Details', 'Payment'],
+        reveal: 'After paying ₹500, you get a "task" that requires buying more products or paying "insurance". The refund never comes.',
+        flags: ['No company name, PAN, or GST number', '₹5,000/day for "data entry" is not a real market rate', 'Refundable fee is a classic bait-and-switch', 'WhatsApp-only communication avoids paper trail'],
+        tips: ['Market rate for data entry is ₹200–800/day — ₹5,000 is impossible', 'Legitimate employers do not charge registration fees', 'Always get a written offer letter with company details', 'Verify on Glassdoor, LinkedIn, or MCA21'],
+        quiz: [{ q: 'What is the realistic daily rate for data entry work in India?', opts: ['₹5,000–10,000', '₹200–800', '₹50,000', '₹2,000–5,000'], ans: 1, exp: 'Market rate for data entry is ₹200–800/day. Anything claiming ₹5,000+ for simple tasks is a scam.' }, { q: 'A "refundable registration fee" for a job is:', opts: ['Standard practice', 'A scam signal — legitimate jobs never charge fees', 'Only for government jobs', 'Required by law'], ans: 1, exp: 'No legitimate employer charges registration, training, or deposit fees. This is always a scam.' }, { q: 'WFH scam operators prefer WhatsApp because:', opts: ['It\'s more professional', 'It avoids creating a paper trail', 'It\'s faster', 'You can send files'], ans: 1, exp: 'WhatsApp messages are harder to trace and disappear — unlike official email or documents.' }]
+    },
+    {
+        id: 9, icon: '📈', title: 'Fake Investment Scheme', desc: 'Invest ₹10,000 — guaranteed ₹20,000 back in 7 days.', diff: 'high', tag: 'Ponzi Scheme',
+        url: 'doublemoney-invest.in', badge: '100% Guaranteed Returns', amount: '2X in 7 Days', amountLabel: 'Invest ₹10,000 → Get ₹20,000',
+        fee: 'Minimum Investment: ₹10,000', feeNote: 'Returns paid daily. Withdraw anytime.',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'mobile', p: 'Mobile Number', t: 'tel' }, { n: 'amount', p: 'Investment Amount (Min ₹10,000)', t: 'number' }, { n: 'upi', p: 'UPI ID for Returns', t: 'text' }],
+        exposed: ['Full Name', 'Mobile Number', 'UPI ID', 'Investment Money'],
+        reveal: 'This is a Ponzi scheme. Early investors are paid using new investor money. When recruitment stops, everyone loses.',
+        flags: ['100% guaranteed returns are impossible in any legal investment', '7-day doubling = 5,200% annual return — physically impossible', 'No SEBI registration number shown', 'No explanation of how returns are generated'],
+        tips: ['SEBI-regulated investments cap realistic returns at 10-15% annually', 'Verify investment companies at sebi.gov.in', '"Guaranteed returns" are illegal to promise under SEBI regulations', 'Report Ponzi schemes to sebi.gov.in'],
+        quiz: [{ q: 'What annual return does "double in 7 days" translate to?', opts: ['200%', '1,000%', 'Over 5,000%', '100%'], ans: 2, exp: 'Doubling in 7 days = ~5,200% annual return. The entire global stock market averages 10% per year.' }, { q: 'Where do you verify a legitimate investment firm in India?', opts: ['Google', 'Their website', 'SEBI registry at sebi.gov.in', 'Social media'], ans: 2, exp: 'SEBI (Securities and Exchange Board of India) maintains the official registry of regulated investment firms.' }, { q: 'In a Ponzi scheme, early investors are paid using:', opts: ['Genuine investment profits', 'New investors\' money', 'Bank loans', 'Government funds'], ans: 1, exp: 'Ponzi schemes have no real investment. Early investors are paid with money from new recruits until collapse.' }]
+    },
+    {
+        id: 10, icon: '👮', title: 'Digital Arrest Scam', desc: 'CBI/Narcotics Bureau: Your number linked to illegal activity. Pay fine to avoid arrest.', diff: 'high', tag: 'Impersonation Fraud',
+        url: 'cbinarcoticsunit.gov.fake', badge: 'OFFICIAL NOTICE', amount: 'Warrant Issued', amountLabel: 'Cybercrime Investigation Unit',
+        fee: 'Pay Fine to Avoid Arrest: ₹25,000', feeNote: 'Failure to comply = immediate physical arrest',
+        fields: [{ n: 'name', p: 'Full Name', t: 'text' }, { n: 'aadhaar', p: 'Aadhaar Number (for verification)', t: 'text' }, { n: 'amount', p: 'Fine Amount ₹25,000 (UPI)', t: 'text' }],
+        exposed: ['Full Name', 'Aadhaar Number', 'Money'],
+        reveal: '"Digital arrest" does not exist in Indian law. Police NEVER demand money via UPI. This is impersonation fraud.',
+        flags: ['"Digital arrest" is not a legal concept in India', 'Real law enforcement cannot arrest you over a video call', 'Official FIRs are served physically — never via WhatsApp', 'No government agency accepts UPI payments for fines'],
+        tips: ['Indian law has no provision for "digital arrest"', 'Real police contact happens in person or through official court summons', 'PM Modi warned the nation about digital arrest scams in October 2024', 'Hang up immediately and call 1930 to report'],
+        quiz: [{ q: '"Digital arrest" in India is:', opts: ['A new cyber law', 'Not a legal concept — it does not exist', 'Only for cybercriminals', 'A Supreme Court ruling'], ans: 1, exp: 'Digital arrest has no legal basis in India. PM Modi specifically warned citizens about this in October 2024.' }, { q: 'Real Indian law enforcement fines are paid:', opts: ['Via UPI on video calls', 'In Bitcoin', 'Through official court/challan systems only', 'Via WhatsApp Pay'], ans: 2, exp: 'All official government payments go through court-mandated channels, challans, or NEFT — never personal UPI.' }, { q: 'If you receive a "digital arrest" video call, you should:', opts: ['Pay the fine immediately', 'Stay on the call to explain yourself', 'Hang up and call 1930 to report', 'Ask for more time'], ans: 1, exp: 'Hang up immediately. The more you engage, the more psychological pressure they apply. Call 1930.' }]
+    },
+    {
+        id: 11, icon: '🤖', title: 'Deepfake Family Emergency', desc: 'Urgent: Your son/daughter has been in an accident. Send ₹15,000 immediately.', diff: 'high', tag: 'Deepfake/AI Fraud',
+        url: 'whatsapp-voice-message.fake', badge: 'URGENT Voice Message', amount: '₹15,000 Needed', amountLabel: 'Family Emergency — Act Now',
+        fee: 'Send via UPI Immediately', feeNote: 'They are at the hospital right now',
+        fields: [{ n: 'name', p: 'Your Name', t: 'text' }, { n: 'relation', p: 'Relation (Son/Daughter/Parent)', t: 'text' }, { n: 'upi', p: 'UPI to Send ₹15,000', t: 'text' }],
+        exposed: ['Name', 'Family Details', 'Money'],
+        reveal: 'AI voice cloning can replicate anyone\'s voice from just 3 seconds of audio. The "emergency" is fabricated.',
+        flags: ['Extreme urgency prevents rational thinking', 'Caller asks you NOT to call the person back directly', 'Voice may sound slightly robotic or have audio artifacts', 'Always demands immediate transfer — will not wait'],
+        tips: ['Always hang up and call the family member directly on their known number', 'Establish a family "safe word" for emergency verification', '3-second audio sample is enough for modern AI voice cloning', 'Slow down — scammers rely on panic. Take 60 seconds to verify.'],
+        quiz: [{ q: 'AI voice cloning requires approximately how much audio?', opts: ['1 hour of audio', '30 minutes', 'As little as 3–5 seconds', 'At least a day of samples'], ans: 2, exp: 'Modern AI voice cloning tools can clone a voice from just 3-5 seconds of audio from social media videos.' }, { q: 'When you receive an emergency call, the FIRST thing to do is:', opts: ['Send money immediately', 'Hang up and call the person on their known number', 'Stay on call for more details', 'Call 100'], ans: 1, exp: 'Always verify by directly calling the person supposedly in distress on their saved number.' }, { q: 'The best protection against voice cloning scams is:', opts: ['Keeping your phone private', 'A family safe word for verification', 'Only answering known numbers', 'Installing antivirus'], ans: 1, exp: 'A pre-agreed family code word (unrelated to emergency context) cannot be guessed by an AI caller.' }]
+    },
+    {
+        id: 12, icon: '🏦', title: 'Bank KYC Verification Scam', desc: 'Your bank account will be blocked today unless you complete KYC verification immediately.',
+        diff: 'med', tag: 'Banking Fraud',
+        url: 'secure-kyc-update.bankverify.com', badge: 'Account Suspension Alert', amount: 'Account at Risk', amountLabel: 'Verify KYC Within 30 Minutes',
+        fee: 'Update PAN & Aadhaar Details',
+        feeNote: 'Failure may result in account freeze',
+        fields: [{ n: 'fullname', p: 'Full Name', t: 'text' }, { n: 'account', p: 'Bank Account Number', t: 'text' }, { n: 'otp', p: 'OTP Received', t: 'text' }],
+        exposed: ['Bank Details', 'OTP', 'Identity Information'],
+        reveal: 'Banks never ask customers to share OTPs or complete KYC through random links sent via SMS or WhatsApp.',
+        flags: ['Creates panic by threatening account closure', 'Requests OTP or login credentials', 'Link does not belong to official bank domain', 'Urgent deadlines pressure users'],
+        tips: ['Always visit the official bank website manually', 'Never share OTPs with anyone', 'Contact your bank directly for verification', 'Check sender information carefully'],
+        quiz: [{ q: 'What should you do if you receive a KYC update message?', opts: ['Click immediately', 'Verify through official bank channels', 'Share OTP for verification', 'Ignore all banking messages'], ans: 1, exp: 'Always verify directly with your bank using official contact methods.' }, { q: 'Who should know your OTP?', opts: ['Bank employee', 'Customer support', 'Only you', 'Relationship manager'], ans: 2, exp: 'OTP is confidential and should never be shared.' }, { q: 'Why do scammers create urgency?', opts: ['To save time', 'To prevent verification', 'To make victims act without thinking', 'To improve service'], ans: 2, exp: 'Urgency reduces critical thinking and increases compliance.' }]
+    },
+    {
+        id: 13, icon: '📸', title: 'Instagram Account Verification Scam', desc: 'Your Instagram account is at risk of suspension. Verify your identity now to keep your blue tick and followers.', diff: 'med', tag: 'Social Media Phishing',
+        url: 'instagram-security-verify.com', badge: 'Account Suspension Warning',
+        amount: 'Account Restricted',
+        amountLabel: 'Verify Within 12 Hours',
+        fee: 'Login Required',
+        feeNote: 'Failure may result in account deletion',
+        fields: [
+            { n: 'username', p: 'Instagram Username', t: 'text' },
+            { n: 'email', p: 'Recovery Email', t: 'email' },
+            { n: 'password', p: 'Instagram Password', t: 'password' }
+        ],
+        exposed: ['Username', 'Password', 'Email Access'],
+        reveal: 'Attackers steal Instagram credentials and take over accounts to scam followers or sell access.',
+        flags: ['Threatens account suspension', 'Requests your password directly', 'Domain is not instagram.com', 'Creates urgency to bypass thinking'],
+        tips: ['Instagram never asks for passwords through external links', 'Check the website domain carefully', 'Enable two-factor authentication', 'Use a password manager'],
+        quiz: [
+            { q: 'Which website should you trust for Instagram login?', opts: ['instagram-security-verify.com', 'instagram-help-login.net', 'instagram.com', 'secure-meta-verify.com'], ans: 2, exp: 'Only official Instagram domains should be trusted.' },
+            { q: 'What is the biggest risk?', opts: ['Losing followers', 'Account takeover', 'Slow internet', 'App update'], ans: 1, exp: 'Stolen credentials allow complete account takeover.' },
+            { q: 'What helps protect accounts?', opts: ['Strong passwords only', '2FA', 'Private account', 'More followers'], ans: 1, exp: 'Two-factor authentication greatly reduces account compromise risk.' }]
+    },
+    {
+        id: 14, icon: '⚡', title: 'Electricity Bill Disconnection Scam', desc: 'Your electricity service will be disconnected today due to an unpaid bill. Pay immediately.', diff: 'med', tag: 'Utility Fraud',
+        url: 'power-bill-payment.in', badge: 'FINAL DISCONNECTION NOTICE',
+        amount: '₹2,485 Due',
+        amountLabel: 'Service Termination Today',
+        fee: 'Pay Outstanding Bill',
+        feeNote: 'Power supply will be disconnected within 30 minutes',
+        fields: [
+            { n: 'name', p: 'Consumer Name', t: 'text' },
+            { n: 'mobile', p: 'Registered Mobile Number', t: 'text' },
+            { n: 'upi', p: 'UPI ID For Payment', t: 'text' }
+        ],
+        exposed: ['Personal Details', 'UPI Information', 'Money'],
+        reveal: 'Scammers impersonate electricity providers and pressure victims into making immediate payments.',
+        flags: ['Threatens immediate disconnection', 'Uses fear and urgency', 'Demands payment through personal accounts', 'Message often arrives outside normal billing cycles'],
+        tips: ['Verify bills through official utility portals', 'Call customer service directly', 'Never trust payment links from SMS', 'Check your actual bill status first'],
+        quiz: [
+            { q: 'What is the first step after receiving such a message?', opts: ['Pay immediately', 'Verify with utility provider', 'Ignore forever', 'Share with friends'], ans: 1, exp: 'Always verify directly with the utility provider.' },
+            { q: 'Why do scammers use disconnection threats?', opts: ['To improve service', 'To create panic', 'To save time', 'To help customers'], ans: 1, exp: 'Fear causes people to act quickly without verification.' },
+            { q: 'Where should bills be verified?', opts: ['SMS links', 'WhatsApp forwards', 'Official provider website/app', 'Social media comments'], ans: 2, exp: 'Official channels are safest.' }]
+    },
+    {
+        id: 15, icon: '💰', title: 'Income Tax Refund Scam', desc: 'You are eligible for a tax refund of ₹48,500. Submit your bank details to receive payment.', diff: 'high', tag: 'Identity Theft',
+        url: 'incometax-refund-gov.co.in', badge: 'Tax Refund Approved',
+        amount: '₹48,500 Refund',
+        amountLabel: 'Claim Within 24 Hours',
+        fee: 'Bank Verification Required',
+        feeNote: 'Refund will expire if not claimed',
+        fields: [
+            { n: 'pan', p: 'PAN Number', t: 'text' },
+            { n: 'account', p: 'Bank Account Number', t: 'text' },
+            { n: 'ifsc', p: 'IFSC Code', t: 'text' }
+        ],
+        exposed: ['PAN', 'Bank Details', 'Identity Information'],
+        reveal: 'Scammers use fake refund notices to steal financial and identity information.',
+        flags: ['Unexpected refund notification', 'Non-government website', 'Demands banking details', 'Short deadlines'],
+        tips: ['Check refunds only through official government portals', 'Never share banking details through email links', 'Verify sender addresses carefully', 'Enable account alerts'],
+        quiz: [
+            { q: 'What should you verify first?', opts: ['Refund amount', 'Website domain', 'Bank balance', 'PAN number'], ans: 1, exp: 'Always verify the website before entering data.' },
+            { q: 'Which information is especially sensitive?', opts: ['PAN and bank account details', 'Mobile wallpaper', 'Browser history', 'WiFi name'], ans: 0, exp: 'Identity and banking information can be abused.' },
+            { q: 'Government refund notices should be checked via?', opts: ['WhatsApp', 'Official tax portal', 'SMS links', 'Facebook'], ans: 1, exp: 'Always use official government portals.' }
+        ]
+    },
+    {
+        id: 16, icon: '🏢', title: 'Corporate Password Reset Scam', desc: 'Your Microsoft 365 account password expires today. Reset it immediately to avoid losing email access.', diff: 'high', tag: 'Corporate Phishing',
+        url: 'microsoft365-password-reset.net', badge: 'Password Expiration Notice',
+        amount: 'Corporate Account Alert',
+        amountLabel: 'Reset Required Today',
+        fee: 'Security Verification',
+        feeNote: 'Access may be suspended',
+        fields: [
+            { n: 'employeeid', p: 'Employee ID', t: 'text' },
+            { n: 'email', p: 'Work Email', t: 'email' },
+            { n: 'password', p: 'Current Password', t: 'password' }
+        ],
+        exposed: ['Corporate Credentials', 'Employee Information', 'Email Access'],
+        reveal: 'Corporate phishing attacks target employee accounts to gain access to company systems and sensitive data.',
+        flags: ['Requests current password', 'External website', 'Urgent expiration warning', 'Impersonates IT department'],
+        tips: ['Verify with internal IT teams', 'Check sender domain carefully', 'Use MFA wherever possible', 'Report suspicious emails immediately'],
+        quiz: [
+            { q: 'Who should verify password reset requests?', opts: ['Random email links', 'Coworkers', 'IT department', 'Social media'], ans: 2, exp: 'Always confirm with official IT channels.' },
+            { q: 'Why are employees targeted?', opts: ['Entertainment', 'Access to company systems', 'Free software', 'Internet speed'], ans: 1, exp: 'Corporate accounts often provide access to valuable resources.' },
+            { q: 'Best defense against credential theft?', opts: ['Ignoring emails', 'Multi-factor authentication', 'Using public WiFi', 'Sharing passwords'], ans: 1, exp: 'MFA significantly reduces compromise risk.' }
+        ]
+    },
+    {
+        id: 17, icon: '📶', title: 'SIM Upgrade Scam', desc: 'Your SIM must be upgraded to support 5G services. Verify your number and OTP now.', diff: 'high', tag: 'Telecom Fraud',
+        url: '5g-network-upgrade.com', badge: 'SIM Upgrade Required',
+        amount: 'Free 5G Upgrade',
+        amountLabel: 'Activate Today',
+        fee: 'Verification Required',
+        feeNote: 'Your number may stop working',
+        fields: [
+            { n: 'mobile', p: 'Mobile Number', t: 'text' },
+            { n: 'aadhaar', p: 'Aadhaar Number', t: 'text' },
+            { n: 'otp', p: 'OTP Received', t: 'text' }
+        ],
+        exposed: ['Mobile Number', 'OTP', 'Identity Information'],
+        reveal: 'Scammers use OTPs to transfer your number to a SIM card they control, allowing them to intercept banking and authentication messages.',
+        flags: ['Unexpected upgrade request', 'Asks for OTP', 'Threatens service disruption', 'Requests identity documents'],
+        tips: ['Telecom companies never ask for OTPs over calls or messages', 'Contact your provider directly', 'Enable SIM lock where available', 'Monitor sudden loss of network signal'],
+        quiz: [
+            { q: 'What can happen after a successful SIM swap?', opts: ['Faster internet', 'Number transferred to attacker', 'Free upgrade', 'Better signal'], ans: 1, exp: 'The attacker gains control of your phone number.' },
+            { q: 'Why is OTP theft dangerous?', opts: ['It changes wallpaper', 'It enables account takeover', 'It improves security', 'It updates SIM'], ans: 1, exp: 'Many services use OTPs for authentication.' },
+            { q: 'What should you do if your phone suddenly loses network service?', opts: ['Ignore it', 'Contact your telecom provider immediately', 'Restart later', 'Buy a new phone'], ans: 1, exp: 'Unexpected loss of service may indicate SIM swap activity.' }
+        ]
+    },
+    {
+        id: 18, icon: '🎓', title: 'Government Scholarship Scam', desc: 'Congratulations! You have been selected for a government scholarship worth ₹50,000.', diff: 'med', tag: 'Education Fraud',
+        url: 'national-scholarship-benefits.in',
+        badge: 'Scholarship Approved',
+        amount: '₹50,000 Award',
+        amountLabel: 'Claim Before Deadline',
+        fee: 'Bank Verification Required',
+        feeNote: 'Scholarship expires in 24 hours',
+        fields: [
+            { n: 'name', p: 'Student Name', t: 'text' },
+            { n: 'aadhaar', p: 'Aadhaar Number', t: 'text' },
+            { n: 'account', p: 'Bank Account Number', t: 'text' }
+        ],
+        exposed: ['Identity Information', 'Bank Details'],
+        reveal: 'Scammers target students by promising scholarships and collecting identity and banking information.',
+        flags: ['Unexpected scholarship approval', 'Requests Aadhaar and bank details', 'Creates urgency', 'Uses unofficial website'],
+        tips: ['Verify scholarships through official portals', 'Never share personal documents via random links', 'Check eligibility criteria carefully', 'Confirm with your institution'],
+        quiz: [
+            { q: 'What should you verify first?', opts: ['Amount offered', 'Official scholarship website', 'Bank account', 'Aadhaar'], ans: 1, exp: 'Always verify through official government or institution portals.' },
+            { q: 'Why do scammers target students?', opts: ['Students have more money', 'Students may be less familiar with fraud', 'Scholarships are illegal', 'Banks require it'], ans: 1, exp: 'Students are often targeted because they are actively seeking opportunities.' },
+            { q: 'Which information is sensitive?', opts: ['Aadhaar number', 'Favorite subject', 'College name', 'Age'], ans: 0, exp: 'Identity documents can be misused for fraud.' }
+        ]
+    },
+    {
+        id: 19, icon: '📢', title: 'Copyright Violation Account Suspension', desc: 'Your Facebook/Instagram page violated copyright policies. Appeal now to avoid deletion.', diff: 'high', tag: 'Social Engineering',
+        url: 'meta-copyright-review.com',
+        badge: 'Page Removal Warning',
+        amount: 'Account Restricted',
+        amountLabel: 'Appeal Required',
+        fee: 'Identity Verification',
+        feeNote: 'Page may be deleted within 12 hours',
+        fields: [
+            { n: 'username', p: 'Page Username', t: 'text' },
+            { n: 'email', p: 'Business Email', t: 'email' },
+            { n: 'password', p: 'Account Password', t: 'password' }
+        ],
+        exposed: ['Social Media Credentials', 'Email Access'],
+        reveal: 'Attackers impersonate Meta and steal login credentials to hijack social media accounts.',
+        flags: ['Threatens immediate page deletion', 'Requests password directly', 'Uses unofficial domain', 'Creates panic'],
+        tips: ['Check notification center inside the app', 'Never enter passwords on external sites', 'Enable 2FA', 'Verify domain names carefully'],
+        quiz: [
+            { q: 'Where should policy violations appear?', opts: ['Random websites', 'Official platform notifications', 'WhatsApp', 'SMS only'], ans: 1, exp: 'Legitimate violations appear inside the platform.' },
+            { q: 'What is the scammer after?', opts: ['Likes', 'Credentials', 'Followers', 'Photos'], ans: 1, exp: 'The goal is account takeover.' },
+            { q: 'What helps protect accounts?', opts: ['2FA', 'More posts', 'Private profile', 'Faster internet'], ans: 0, exp: 'Two-factor authentication adds extra security.' }
+        ]
+    },
+    {
+        id: 20, icon: '✈️', title: 'International Parcel Customs Fee Scam', desc: 'Your international parcel is held at customs. Pay clearance charges immediately.', diff: 'med', tag: 'Delivery Fraud',
+        url: 'customs-clearance-india.com',
+        badge: 'Parcel Held At Customs',
+        amount: '₹1,950 Clearance Fee',
+        amountLabel: 'Release Package Today',
+        fee: 'Customs Processing Charge',
+        feeNote: 'Parcel will be returned if unpaid',
+        fields: [
+            { n: 'name', p: 'Recipient Name', t: 'text' },
+            { n: 'address', p: 'Delivery Address', t: 'text' },
+            { n: 'card', p: 'Card Number', t: 'text' }
+        ],
+        exposed: ['Card Information', 'Address', 'Personal Data'],
+        reveal: 'Victims are tricked into paying fake customs fees and revealing payment details.',
+        flags: ['Unexpected international shipment', 'Small fee requests', 'Urgency', 'Unofficial customs website'],
+        tips: ['Verify tracking with official courier websites', 'Confirm whether you actually ordered something', 'Never trust customs requests via SMS links', 'Use official tracking numbers'],
+        quiz: [
+            { q: 'What should you check first?', opts: ['Payment amount', 'Whether you ordered the package', 'Card limit', 'Address'], ans: 1, exp: 'Many victims never ordered any package.' },
+            { q: 'What do scammers want?', opts: ['Customs data', 'Card details and money', 'Delivery confirmation', 'Phone updates'], ans: 1, exp: 'The primary goal is financial theft.' },
+            { q: 'Where should tracking be verified?', opts: ['SMS link', 'Official courier site', 'WhatsApp', 'Facebook'], ans: 1, exp: 'Always use official courier services.' }
+        ]
+    },
+    {
+        id: 21, icon: '❤️', title: 'Disaster Relief Donation Scam', desc: 'Help flood victims immediately. Donate now to save lives.', diff: 'med', tag: 'Charity Fraud',
+        url: 'emergency-relief-fund-help.org',
+        badge: 'Emergency Appeal',
+        amount: 'Donate Any Amount',
+        amountLabel: 'Lives Depend On You',
+        fee: 'Instant UPI Donation',
+        feeNote: 'Campaign ending tonight',
+        fields: [
+            { n: 'name', p: 'Full Name', t: 'text' },
+            { n: 'mobile', p: 'Mobile Number', t: 'text' },
+            { n: 'upi', p: 'UPI ID', t: 'text' }
+        ],
+        exposed: ['Personal Details', 'Financial Information'],
+        reveal: 'Scammers exploit emotions during disasters to collect donations for fake causes.',
+        flags: ['Heavy emotional pressure', 'Little transparency', 'Urgent donation requests', 'No verified charity registration'],
+        tips: ['Donate through verified organizations', 'Research charities before donating', 'Check registration details', 'Avoid donating via forwarded messages'],
+        quiz: [
+            { q: 'What should you verify before donating?', opts: ['Logo color', 'Organization legitimacy', 'Donation amount', 'Website design'], ans: 1, exp: 'Always verify the charity is genuine.' },
+            { q: 'Why do these scams work?', opts: ['People are emotional', 'Internet is slow', 'Banks require donations', 'Government support'], ans: 0, exp: 'Scammers exploit empathy and urgency.' },
+            { q: 'Best place to donate?', opts: ['Random UPI IDs', 'Verified charities', 'Social media DMs', 'Unknown links'], ans: 1, exp: 'Verified organizations are safest.' }
+        ]
+    },
+    {
+        id: 22, icon: '📶', title: 'Free Public Wi-Fi Login Scam', desc: 'Connect to free Wi-Fi by signing in with your email account.', diff: 'high', tag: 'Credential Theft',
+        url: 'free-airport-wifi-login.com',
+        badge: 'Free Wi-Fi Access',
+        amount: 'Unlimited Internet',
+        amountLabel: 'Login To Continue',
+        fee: 'Account Verification',
+        feeNote: 'Access expires in 5 minutes',
+        fields: [
+            { n: 'email', p: 'Email Address', t: 'email' },
+            { n: 'password', p: 'Password', t: 'password' }
+        ],
+        exposed: ['Email Credentials', 'Personal Data'],
+        reveal: 'Fake captive portals steal email credentials and can lead to account compromise.',
+        flags: ['Requests full email password', 'Suspicious Wi-Fi network', 'Poor website design', 'Unexpected login requirements'],
+        tips: ['Use trusted networks only', 'Avoid entering passwords on public Wi-Fi portals', 'Use VPNs when possible', 'Enable MFA on important accounts'],
+        quiz: [
+            { q: 'What is the main goal of fake Wi-Fi portals?', opts: ['Improve internet speed', 'Steal credentials', 'Show ads', 'Collect surveys'], ans: 1, exp: 'Credential theft is the primary objective.' },
+            { q: 'Which account is commonly targeted?', opts: ['Gaming account', 'Email account', 'Calculator app', 'Gallery app'], ans: 1, exp: 'Email access often leads to other account compromises.' },
+            { q: 'What helps secure public Wi-Fi usage?', opts: ['VPN', 'More tabs open', 'Bluetooth', 'Airplane mode'], ans: 0, exp: 'VPNs help protect traffic on untrusted networks.' }
+        ]
+    },
+
+
+
+];
+
+// ─── APP STATE ──────────────────────────────────────────────────────────────
+// ─── API CONFIG ─────────────────────────────────────────────────────────────
+// Change this to your deployed backend URL when ready
+const API_BASE = 'https://scamshield-api-wgca.onrender.com/api';
+const API_ENABLED = true;  // Set to false to force localStorage-only mode
+
+// Admin token storage
+const LS_ADMIN_TOKEN = 'ss_admin_token';
+// User auth tokens
+const LS_USER_TOKEN = 'ss_user_token';
+const LS_USER_DATA = 'ss_user_data';
+
+// ─── APP STATE ──────────────────────────────────────────────────────────────
+let state = { risk: 0, completed: [], currentModule: null, quizScore: 0, quizIdx: 0, quizAnswered: false, exposedData: [], sessionId: null, currentUser: null };
+let adminData = { totals: {}, byModule: [], recent: [], sessions: [] };
+let timerInt = null;
+
+// ─── ESCAPING HELPER (prevents XSS / HTML injection) ───────────────────────
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+function eh(s) { return esc(s); }  // eScape Html
+function safeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<\s*(?!br\b|a\b)([a-zA-Z][a-zA-Z0-9]*)/g, '&lt;$1');
+}
+
+// ─── API HELPERS (localStorage) ────────────────────────────────────────────
+// Kept for compatibility — all calls now use local* functions
+
+// ─── INIT SESSION ───────────────────────────────────────────────────────────
+async function initSession() {
+    setConnStatus('loading', 'Connecting…');
+
+    // Check API connection
+    const apiOk = await checkAPIConnection();
+
+    // Restore user from localStorage
+    const savedUser = localStorage.getItem(LS_USER_DATA);
+    if (savedUser) {
+        try {
+            state.currentUser = JSON.parse(savedUser);
+        } catch (e) {
+            localStorage.removeItem(LS_USER_DATA);
+        }
+    }
+
+    // Update UI with user info
+    updateUserNav();
+
+    // Start session
+    const stored = localStorage.getItem(LS_CUR_SID);
+    const res = await localSessionStart(stored);
+    state.sessionId = res.session_id;
+    localStorage.setItem(LS_CUR_SID, res.session_id);
+
+    if (apiOk) {
+        setConnStatus('ok', 'Backend Connected ✓');
+    } else {
+        setConnStatus('err', 'Offline Mode (localStorage)');
+    }
+
+    // ✨ ALWAYS show home screen
+    go('home');
+
+    // ✨ If no user logged in, show login modal AFTER home loads
+    if (!state.currentUser) {
+        setTimeout(function () {
+            openUserAuth('login');
+        }, 500);
+    }
+}
+
+
+// ─── USER AUTH ──────────────────────────────────────────
+function openUserAuth(tab) {
+    tab = tab || 'login';
+    document.getElementById('user-auth-overlay').style.display = 'flex';
+    switchAuthTab(tab);
+    document.getElementById('ua-login-error').style.display = 'none';
+    document.getElementById('ua-signup-error').style.display = 'none';
+}
+
+function closeUserAuth() {
+    document.getElementById('user-auth-overlay').style.display = 'none';
+    document.getElementById('ua-login-username').value = '';
+    document.getElementById('ua-login-password').value = '';
+    document.getElementById('ua-signup-username').value = '';
+    document.getElementById('ua-signup-email').value = '';
+    document.getElementById('ua-signup-fullname').value = '';
+    document.getElementById('ua-signup-password').value = '';
+}
+
+function switchAuthTab(tab) {
+    var isLogin = tab === 'login';
+    document.getElementById('ua-tab-login').classList.toggle('active', isLogin);
+    document.getElementById('ua-tab-signup').classList.toggle('active', !isLogin);
+    document.getElementById('ua-form-login').style.display = isLogin ? 'block' : 'none';
+    document.getElementById('ua-form-signup').style.display = isLogin ? 'none' : 'block';
+    document.getElementById('user-auth-title').textContent = isLogin ? 'Welcome Back!' : 'Create Your Account';
+    document.getElementById('user-auth-subtitle').textContent = isLogin
+        ? 'Sign in to continue your cyber safety training'
+        : 'Join ScamShield and start learning to spot scams';
+    document.getElementById('ua-footer-text').innerHTML = isLogin
+        ? 'Don\'t have an account? <a onclick="switchAuthTab(\'signup\')">Sign up</a>'
+        : 'Already have an account? <a onclick="switchAuthTab(\'login\')">Sign in</a>';
+}
+
+async function handleUserLogin() {
+    var username = document.getElementById('ua-login-username').value.trim();
+    var password = document.getElementById('ua-login-password').value;
+    var errorEl = document.getElementById('ua-login-error');
+    var successEl = document.getElementById('ua-login-success');
+    var btn = document.getElementById('ua-login-btn');
+    var btnText = btn.querySelector('.ua-btn-text');
+    var spinner = btn.querySelector('.spinner');
+
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    if (!username || !password) {
+        errorEl.textContent = 'Please enter username and password.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btnText.style.display = 'none';
+    spinner.style.display = 'inline-block';
+
+    try {
+        var res = await fetch(API_BASE + '/user/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        var data = await res.json();
+
+        if (data.ok) {
+            localStorage.setItem(LS_USER_TOKEN, data.token);
+            localStorage.setItem(LS_USER_DATA, JSON.stringify(data.user));
+            state.currentUser = data.user;
+
+            successEl.textContent = '✅ Welcome back, ' + data.user.username + '!';
+            successEl.style.display = 'block';
+
+            setTimeout(function () {
+                closeUserAuth();
+                updateUserNav();
+                go('home');
+                showToast('Welcome back, ' + data.user.username + '!', 'ok', 'Logged In');
+            }, 800);
+        } else {
+            errorEl.textContent = '❌ ' + (data.err || 'Login failed.');
+            errorEl.style.display = 'block';
+            document.getElementById('ua-login-password').value = '';
+        }
+    } catch (e) {
+        errorEl.textContent = '⚠️ Cannot reach server. Please try again later.';
+        errorEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        spinner.style.display = 'none';
+    }
+}
+
+async function handleUserSignup() {
+    const username = document.getElementById('ua-signup-username').value.trim();
+    const email = document.getElementById('ua-signup-email').value.trim();
+    const full_name = document.getElementById('ua-signup-fullname').value.trim();
+    const password = document.getElementById('ua-signup-password').value;
+    const errorEl = document.getElementById('ua-signup-error');
+    const btn = document.getElementById('ua-signup-btn');
+    const btnText = btn.querySelector('.ua-btn-text');
+    const spinner = btn.querySelector('.spinner');
+
+    errorEl.style.display = 'none';
+
+    // ✨ STRICT VALIDATION
+    if (!username || !email || !password) {
+        errorEl.textContent = 'Please fill in all required fields.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (username.length < 3) {
+        errorEl.textContent = 'Username must be at least 3 characters.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        errorEl.textContent = 'Username can only contain letters, numbers, and underscores.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errorEl.textContent = 'Invalid email address.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    // ✨ STRICT PASSWORD RULES
+    const passwordErrors = [];
+    if (password.length < 8) {
+        passwordErrors.push('at least 8 characters');
+    }
+    if (!/[A-Z]/.test(password)) {
+        passwordErrors.push('one uppercase letter (A-Z)');
+    }
+    if (!/[a-z]/.test(password)) {
+        passwordErrors.push('one lowercase letter (a-z)');
+    }
+    if (!/[0-9]/.test(password)) {
+        passwordErrors.push('one number (0-9)');
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+        passwordErrors.push('one special character (!@#$%^&*)');
+    }
+
+    if (passwordErrors.length > 0) {
+        errorEl.innerHTML = '🔒 Password must contain: <b>' + passwordErrors.join(', ') + '</b>';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btnText.style.display = 'none';
+    spinner.style.display = 'inline-block';
+
+    try {
+        const res = await fetch(API_BASE + '/user/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email, password, full_name })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            localStorage.setItem(LS_USER_TOKEN, data.token);
+            localStorage.setItem(LS_USER_DATA, JSON.stringify(data.user));
+            state.currentUser = data.user;
+            document.body.classList.remove('auth-required');
+
+            setTimeout(function () {
+                closeUserAuth();
+                updateUserNav();
+                go('home');
+                showToast('Welcome to ScamShield, ' + data.user.username + '!', 'ok', 'Account Created');
+            }, 800);
+        } else {
+            errorEl.textContent = '❌ ' + (data.err || 'Signup failed.');
+            errorEl.style.display = 'block';
+        }
+    } catch (e) {
+        errorEl.textContent = '⚠️ Cannot reach server. Please try again later.';
+        errorEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        spinner.style.display = 'none';
+    }
+}
+
+function userLogout() {
+    if (confirm('Logout from your account?')) {
+        localStorage.removeItem(LS_USER_TOKEN);
+        localStorage.removeItem(LS_USER_DATA);
+        state.currentUser = null;
+        updateUserNav();
+        showToast('Logged out', 'ok');
+        setTimeout(function () {
+            openUserAuth('login');
+        }, 500);
+    }
+}
+
+function updateUserNav() {
+    var navContainer = document.getElementById('user-auth-nav');
+    if (!navContainer) return;
+
+    if (state.currentUser && state.currentUser.username) {
+        var initial = state.currentUser.username.charAt(0).toUpperCase();
+        navContainer.innerHTML = '<div class="user-info-pill" onclick="userLogout()" title="Click to logout"><div class="user-avatar">' + initial + '</div><span>' + state.currentUser.username + '</span></div>';
+    } else {
+        navContainer.innerHTML = '<div class="login-nav-btn" onclick="openUserAuth(\'login\')">🔐 Login / Sign Up</div>';
+    }
+}
+
+async function setConnStatus(type, label) {
+    const dot = document.getElementById('conn-dot');
+    const lbl = document.getElementById('conn-label');
+    dot.className = 'conn-dot ' + type;
+    lbl.textContent = label;
+}
+
+async function checkAPIConnection() {
+    if (!API_ENABLED) {
+        setConnStatus('ok', 'Local Mode (No API)');
+        return false;
+    }
+    try {
+        const res = await fetch(API_BASE + '/health', { method: 'GET' });
+        if (res.ok) {
+            const data = await res.json();
+            setConnStatus('ok', 'Backend Connected ✓');
+            return true;
+        }
+    } catch (e) {
+        setConnStatus('err', 'Offline (localStorage)');
+        return false;
+    }
+    setConnStatus('err', 'Backend Unreachable');
+    return false;
+}
+
+function logAttempt(extra = {}) {
+    if (!state.sessionId || !state.currentModule) return;
+    const m = state.currentModule;
+    localLogAttempt({
+        session_id: state.sessionId,
+        module_id: m.id, module_title: m.title, module_tag: m.tag, difficulty: m.diff,
+        fields_filled: state.exposedData,
+        data_exposed: state.exposedData,
+        risk_score: state.risk,
+        ...extra
+    });
+}
+
+// ─── NAVIGATION ─────────────────────────────────────────────────────────────
+function go(screenId) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById('screen-' + screenId).classList.add('active'); window.scrollTo(0, 0); }
+function goHome() { go('home'); renderModules(); }
+function openAdmin() {
+    // Check if admin token exists
+    const token = localStorage.getItem(LS_ADMIN_TOKEN);
+    if (API_ENABLED && !token) {
+        showAdminLogin();
+        return;
+    }
+    loadAdminData();
+    go('admin');
+}
+
+// ─── ADMIN LOGIN UI ─────────────────────────────────────────────────────
+function showAdminLogin() {
+    document.getElementById('admin-login-overlay').style.display = 'flex';
+    document.getElementById('admin-username').focus();
+    // Hide any previous error
+    document.getElementById('admin-login-error').style.display = 'none';
+}
+
+function closeAdminLogin() {
+    document.getElementById('admin-login-overlay').style.display = 'none';
+    document.getElementById('admin-username').value = '';
+    document.getElementById('admin-password').value = '';
+}
+
+function toggleAdminPassword() {
+    const inp = document.getElementById('admin-password');
+    const btn = document.querySelector('.admin-toggle-pass');
+    if (inp.type === 'password') {
+        inp.type = 'text';
+        btn.textContent = '🙈';
+    } else {
+        inp.type = 'password';
+        btn.textContent = '👁';
+    }
+}
+
+async function handleAdminLogin() {
+    const username = document.getElementById('admin-username').value.trim();
+    const password = document.getElementById('admin-password').value;
+    const errorEl = document.getElementById('admin-login-error');
+    const btn = document.getElementById('admin-login-btn');
+    const spinner = document.getElementById('admin-login-spinner');
+    const btnText = btn.querySelector('.admin-login-text');
+
+    if (!username || !password) {
+        errorEl.textContent = 'Please enter both username and password.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    // Show loading
+    btn.disabled = true;
+    btnText.style.display = 'none';
+    spinner.style.display = 'inline-block';
+    errorEl.style.display = 'none';
+
+    try {
+        const res = await fetch(API_BASE + '/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            localStorage.setItem(LS_ADMIN_TOKEN, data.token);
+            closeAdminLogin();
+            showToast('✅ Logged in as ' + data.admin.username, 'ok');
+            loadAdminData();
+            go('admin');
+        } else {
+            errorEl.textContent = '❌ ' + (data.err || 'Login failed. Please check your credentials.');
+            errorEl.style.display = 'block';
+            document.getElementById('admin-password').value = '';
+            document.getElementById('admin-password').focus();
+        }
+    } catch (e) {
+        // Backend offline — allow local mode
+        errorEl.innerHTML = '⚠️ Cannot reach server. <b>Continuing in local mode</b> — data will be stored in your browser only.';
+        errorEl.style.background = 'rgba(251, 191, 36, .1)';
+        errorEl.style.borderColor = 'rgba(251, 191, 36, .3)';
+        errorEl.style.color = '#fde68a';
+        errorEl.style.display = 'block';
+        setTimeout(() => {
+            localStorage.setItem(LS_ADMIN_TOKEN, 'local-mode');
+            closeAdminLogin();
+            showToast('📂 Using localStorage mode (backend offline)', 'ok');
+            loadAdminData();
+            go('admin');
+        }, 1800);
+    } finally {
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        spinner.style.display = 'none';
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('admin-login-overlay').style.display === 'flex') {
+        closeAdminLogin();
+    }
+});
+
+// Close modal on overlay click (but not on box click)
+document.getElementById('admin-login-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'admin-login-overlay') closeAdminLogin();
+});
+
+function adminLogout() {
+    if (confirm('Logout from admin panel?')) {
+        localStorage.removeItem(LS_ADMIN_TOKEN);
+        showToast('Logged out', 'ok');
+        goHome();
+    }
+}
+
+// ─── TOAST ──────────────────────────────────────────────────────────────────
+// ─── RICH TOAST NOTIFICATIONS ─────────────────────────────────────────────
+function showToast(msg, type = 'ok', title = null) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const icons = {
+        ok: '✅',
+        err: '❌',
+        warn: '⚠️',
+        info: 'ℹ️'
+    };
+
+    const titles = {
+        ok: title || 'Success',
+        err: title || 'Error',
+        warn: title || 'Warning',
+        info: title || 'Info'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = 'toast-new ' + type;
+    toast.innerHTML = `
+        <div class="toast-icon">${icons[type] || 'ℹ️'}</div>
+        <div class="toast-content">
+          <div class="toast-title">${eh(titles[type])}</div>
+          <div class="toast-msg">${eh(msg)}</div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()" aria-label="Close">✕</button>
+      `;
+
+    container.appendChild(toast);
+
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.style.animation = 'fadeOut .3s ease forwards';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 4000);
+}
+
+// Shorthand helpers
+function toastOk(msg, title) { showToast(msg, 'ok', title); }
+function toastErr(msg, title) { showToast(msg, 'err', title); }
+function toastWarn(msg, title) { showToast(msg, 'warn', title); }
+function toastInfo(msg, title) { showToast(msg, 'info', title); }
+
+//───────────────────────────────────────────────────
+
+// ─── CONFIRMATION MODAL ───────────────────────────────────────────────────
+let _confirmCallback = null;
+// DEBUG: Check if functions exist
+window._debugAdmin = function () {
+    console.log('=== Admin Debug ===');
+    console.log('API_ENABLED:', API_ENABLED);
+    console.log('API_BASE:', API_BASE);
+    console.log('LS_ADMIN_TOKEN:', localStorage.getItem(LS_ADMIN_TOKEN));
+    console.log('delSession exists:', typeof delSession);
+    console.log('delModuleData exists:', typeof delModuleData);
+    console.log('confirmWipe exists:', typeof confirmWipe);
+    console.log('showConfirm exists:', typeof showConfirm);
+    console.log('Sessions in LS:', Object.keys(getAllSessions()).length);
+    console.log('Attempts in LS:', getAllAttempts().length);
+};
+function showConfirm({
+    title = 'Are you sure?',
+    message = 'This action cannot be undone.',
+    details = null,
+    icon = '⚠️',
+    okText = 'Confirm',
+    cancelText = 'Cancel',
+    danger = true,
+    callback = null
+}) {
+    document.getElementById('confirm-icon').textContent = icon;
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+
+    const okBtn = document.getElementById('confirm-ok');
+    const cancelBtn = document.getElementById('confirm-cancel');
+
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+
+    okBtn.className = 'confirm-btn-danger' + (danger ? '' : ' warning');
+
+    const detailsEl = document.getElementById('confirm-details');
+    if (details) {
+        detailsEl.innerHTML = details;
+        detailsEl.style.display = 'block';
+    } else {
+        detailsEl.style.display = 'none';
+    }
+
+    _confirmCallback = callback;
+    document.getElementById('confirm-overlay').style.display = 'flex';
+
+    // Wire up the OK button
+    okBtn.onclick = () => {
+        if (_confirmCallback) _confirmCallback(true);
+        closeConfirm();
+    };
+}
+
+function closeConfirm() {
+    document.getElementById('confirm-overlay').style.display = 'none';
+    if (_confirmCallback) _confirmCallback(false);
+    _confirmCallback = null;
+}
+
+// Close on Escape or overlay click
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('confirm-overlay').style.display === 'flex') {
+        closeConfirm();
+    }
+});
+
+// ─── UPDATE NAV ─────────────────────────────────────────────────────────────
+function updateNav() {
+    document.getElementById('nav-risk').textContent = state.risk;
+    document.getElementById('nav-done').textContent = state.completed.length;
+    document.getElementById('scam-risk-display').textContent = state.risk;
+}
+
+function updateRiskMeter(pct) {
+    const fill = document.getElementById('risk-fill');
+    document.getElementById('risk-pct').textContent = Math.round(pct) + '%';
+    fill.style.width = pct + '%';
+    fill.style.background = pct < 30 ? '#22c55e' : pct < 60 ? '#fbbf24' : '#ef4444';
+}
+
+// ─── RENDER MODULES ──────────────────────────────────────────────────────────
+function renderModules() {
+    document.getElementById('modules-grid').innerHTML = MODULES.map(m => `
+    <div class="module-card ${state.completed.includes(m.id) ? 'completed' : ''}" onclick="showInfoPage(${m.id})" onkeydown="if(event.key==='Enter'||event.key===' ')showInfoPage(${m.id})" role="button" tabindex="0" aria-label="Learn about ${eh(m.title)}">
+      <div class="card-icon" aria-hidden="true">${eh(m.icon)}</div>
+      <div class="card-difficulty diff-${eh(m.diff)}">${m.diff === 'high' ? 'High Risk' : m.diff === 'med' ? 'Medium' : 'Low Risk'}</div>
+      <div class="card-title">${eh(m.title)}</div>
+      <div class="card-desc">${eh(m.desc)}</div>
+      <div class="card-footer">
+        <span class="card-tag">${eh(m.tag)}</span>
+        <button class="start-btn">${state.completed.includes(m.id) ? 'Replay ↺' : 'Learn →'}</button>
+      </div>
+    </div>`).join('');
+}
+// After rendering modules, update UI with loaded state
+updateProgressDisplay();
+
+// ─── SCAM INFO DATA ─────────────────────────────────────────────────────────
+const SCAM_INFO = {
+    0: {
+        what: `An <b>instant loan scam</b> promises quick, hassle-free loans with minimal documentation — often pre-approved — and demands an upfront "processing fee" or "insurance" before disbursement. The loan never comes. These scams exploit financial desperation and the appeal of skipping lengthy bank verification.`,
+        stats: [
+            { num: '₹2,200 Cr', lbl: 'Lost to digital loan fraud in India' },
+            { num: '38%', lbl: 'Of all cyber fraud complaints in India' },
+            { num: '24 hrs', lbl: 'Time scammers disappear after taking fee' }
+        ],
+        scenarios: [
+            { title: 'Student Loan Trap', body: 'Rohit, a 22-year-old college student, applied for a ₹2 lakh loan on a flashy app. He was "approved" within 5 minutes and asked to pay ₹3,500 as GST + processing. After paying, the app vanished from his phone.' },
+            { title: 'WhatsApp Loan Offer', body: 'Sunita received a WhatsApp message: "Pre-approved for ₹5 lakh loan, no CIBIL check needed." She paid ₹8,500 across multiple "verification stages." The agent then asked for her Aadhaar OTP, and ₹47,000 disappeared from her bank.' },
+            { title: 'Fake App Loan', body: 'Karthik downloaded a loan app from a Facebook ad. The app accessed his contacts and photos. After he paid the "processing fee," they threatened to leak morphed photos to his contacts unless he paid ₹50,000 more.' }
+        ],
+        warnings: ['Legitimate lenders NEVER charge upfront fees — they are deducted from the loan amount', 'RBI maintains the official NBFC registry at rbi.org.in — verify before applying', 'Real loans require proper KYC, credit checks, and documentation — they cannot be "instant"']
+    },
+    1: {
+        what: `A <b>fake interview / job scam</b> lures job seekers with high-salary positions that require no experience. They demand registration fees, training fees, or "security deposits" and collect sensitive documents like Aadhaar and PAN for identity theft.`,
+        stats: [
+            { num: '₹1,420 Cr', lbl: 'Lost to job fraud in India' },
+            { num: '68%', lbl: 'Target college students and freshers' },
+            { num: '1 in 4', lbl: 'Job listings on social media are fraudulent' }
+        ],
+        scenarios: [
+            { title: 'Work-From-Home Data Entry', body: 'Priya paid ₹500 registration for a "data entry" job paying ₹5,000/day. They asked her to buy a "training kit" for ₹2,500. After paying, they vanished.' },
+            { title: 'HR Impersonation', body: 'A fake "HR from Infosys" contacted Amit for a developer role. They asked for PAN + Aadhaar + bank details "for background verification." His identity was used to apply for 4 credit cards.' },
+            { title: 'Certificate Theft', body: 'Meera was asked to upload her original degree certificates and mark sheets on a portal. They were later used to create fake certificates sold to other fraudsters.' }
+        ],
+        warnings: ['No legitimate employer charges fees for jobs, interviews, or training', 'Verify companies on MCA21 (mca.gov.in) before sharing any documents', 'Aadhaar + PAN together enable identity theft — never share both in one form']
+    },
+    2: {
+        what: `A <b>fake e-commerce deal scam</b> lists premium products (iPhones, designer bags, electronics) at impossibly low prices — 80-95% below market rate. The goal is to capture complete payment card details which are then used for unauthorized transactions.`,
+        stats: [
+            { num: '₹580 Cr', lbl: 'E-commerce fraud losses in India (2023)' },
+            { num: '4.2M', lbl: 'Fake shopping sites detected globally in 2024' },
+            { num: '72 hrs', lbl: 'Average lifespan of a fake shopping site' }
+        ],
+        scenarios: [
+            { title: 'Festival Sale iPhone', body: 'During Diwali sale, "iPhone 16 Pro for ₹3,499" was advertised. Arjun paid via UPI. The site vanished in 48 hours, and his card was later charged for international transactions.' },
+            { title: 'Instagram Sneaker Store', body: 'A college student ordered "Nike Air Max" for ₹799 from an Instagram store. She received plastic chappals in a Nike box. The seller blocked her instantly.' },
+            { title: 'Flash Sale TV', body: 'A family paid ₹12,000 for a "Samsung TV" listed at "₹2,999 only 1 left." Payment was taken, a fake tracking number was sent, and the contact became unreachable.' }
+        ],
+        warnings: ['If the price is more than 40% below MRP, it is almost certainly fake', 'Only buy Apple/Samsung products from apple.com/in or official authorized resellers', 'Never enter CVV on unfamiliar sites — use virtual cards for online shopping']
+    },
+    3: {
+        what: `A <b>gold / commodity investment scam</b> offers physical gold, silver, or other precious metals at prices far below market rate. The product is counterfeit (brass-plated, fake BIS stamps) or never delivered. They also use the UPI "collect request" trick to steal money.`,
+        stats: [
+            { num: '₹1,500 Cr', lbl: 'Lost to commodity fraud in India (2023)' },
+            { num: '93%', lbl: 'Of victims never recover their money' },
+            { num: '60-90%', lbl: 'Discount from market rate = guaranteed scam' }
+        ],
+        scenarios: [
+            { title: 'WhatsApp Gold Coin Group', body: 'Kavita joined a Telegram group selling "24K gold coins" for ₹4,999. She received brass-plated coins. The admin vanished.' },
+            { title: 'UPI Refund Trap', body: 'Suresh sold a laptop online. The buyer sent a "UPI collect request" disguised as a refund. Suresh entered his PIN — ₹23,000 was deducted. UPI collect requests INITIATE payments, not receive them.' },
+            { title: 'Fake Silver Bars', body: 'An investor ordered "BIS-certified silver bars" at 60% below market rate via Telegram. He received aluminium bars with fake BIS stamps.' }
+        ],
+        warnings: ['UPI "collect" requests DEDUCT money from your account when you enter PIN — they do not credit money', 'Buy gold only from RBI-authorised dealers or sovereign gold bonds', 'Verify BIS hallmark at bis.gov.in before buying precious metals']
+    },
+    4: {
+        what: `A <b>lottery / lucky draw scam</b> tricks victims into believing they have won a prize in a contest they never entered. To "claim" the prize, they're asked to pay a small fee — which escalates repeatedly. There is no prize. Illegal under the Prize Chits Act 1978.`,
+        stats: [
+            { num: '₹930 Cr', lbl: 'Lottery fraud losses in India' },
+            { num: '₹50 → ₹50K', lbl: 'Typical fee escalation pattern' },
+            { num: '1.2M', lbl: 'Lottery scam complaints filed in 2023' }
+        ],
+        scenarios: [
+            { title: 'SMS Lucky Winner', body: 'Meena got SMS: "You won ₹5 lakh National Digital Lottery. Pay ₹50 to claim." After paying, she was told to pay ₹500 GST, then ₹5,000 insurance. Total loss: ₹18,000.' },
+            { title: 'KBC Jackpot Call', body: 'A retired teacher was told she won ₹25 lakh on KBC. She paid "processing fees" over several days totaling ₹2.3 lakh before her son intervened.' },
+            { title: 'YouTube Gaming Laptop', body: 'A teenager paid "delivery fees" of ₹150, ₹800 customs, ₹2,500 insurance for a gaming laptop giveaway. The laptop never came.' }
+        ],
+        warnings: ['You cannot win a contest you never participated in — this is ALWAYS a scam', 'Fee escalation (₹50 → ₹500 → ₹5,000) is the defining pattern', 'Report lottery fraud to 1930 (National Cyber Helpline) immediately']
+    },
+    5: {
+        what: `A <b>credit card fraud scam</b> tricks victims into submitting complete card details — number, expiry, CVV, AND OTP — on fake "verification" pages. With these details, criminals make unlimited purchases, create cloned cards, or sell credentials on the dark web.`,
+        stats: [
+            { num: '₹1,457 Cr', lbl: 'Card/payment fraud losses in India' },
+            { num: '6 min', lbl: 'Avg time before card is misused after theft' },
+            { num: '45%', lbl: 'Card fraud involves phishing websites' }
+        ],
+        scenarios: [
+            { title: 'HDFC Exclusive Offers', body: 'Vikram got a WhatsApp link for "HDFC 90% off New Year sale." He entered card details. Within 6 minutes, ₹47,000 was charged to international merchants.' },
+            { title: 'SBI Card Verification', body: 'An elderly customer got SMS asking to "re-verify" her SBI card. She entered all details plus OTP. Her entire savings were cleared within hours.' },
+            { title: 'Google Pay Cashback', body: 'Rohit saw an ad for "₹2,000 ICICI cashback." He entered card details to "activate" — ₹68,000 was stolen; no cashback ever arrived.' }
+        ],
+        warnings: ['Your bank will NEVER ask for CVV or OTP through any website or call', 'Always type bank URLs manually — never click links in SMS or WhatsApp', 'Enable transaction alerts and set daily spending limits on all cards']
+    },
+    6: {
+        what: `A <b>free gift delivery scam</b> announces you've won a prize (mixer, phone, voucher) and asks for a small "delivery charge" to claim it. The small fee is bait — capturing your card details enables fraudsters to charge ANY amount at any time.`,
+        stats: [
+            { num: '₹280 Cr', lbl: 'Gift delivery scam losses in India' },
+            { num: '₹99 → ₹15K+', lbl: 'Typical additional charge range' },
+            { num: '72%', lbl: 'Victims targeted via WhatsApp forwards' }
+        ],
+        scenarios: [
+            { title: 'Flipkart Spin-and-Win', body: 'Deepa clicked a WhatsApp "Flipkart Spin-and-Win" link. She "won" a mixer, paid ₹99 delivery. Three days later, ₹12,500 was debited from her card.' },
+            { title: 'Amazon Loyalty Reward', body: 'A family paid ₹150 delivery for an "Amazon Prime loyalty gift." Their card was used for three international transactions totaling ₹29,000.' },
+            { title: 'Festival Hamper', body: 'During Holi, Neha paid ₹89 for a "Marico gift hamper." Two weeks later, 11 small charges from different merchants totaled ₹8,700.' }
+        ],
+        warnings: ['Legitimate companies NEVER charge delivery fees for prizes you have won', 'Once card details are saved by fraudsters, any amount can be charged at any time', 'Real contest winners are notified through official brand communications, not SMS forwards']
+    },
+    7: {
+        what: `A <b>reward points / malware app scam</b> creates urgency ("points expire tonight!") to trick victims into downloading fake banking apps outside the Play Store. Once installed, the malware reads SMS (OTPs), monitors banking apps, takes screenshots, and drains accounts silently.`,
+        stats: [
+            { num: '₹524 Cr', lbl: 'Malware/app fraud losses in India' },
+            { num: '1,000+', lbl: 'Malicious APKs detected monthly in India' },
+            { num: '100%', lbl: 'Victims who installed lost OTP protection' }
+        ],
+        scenarios: [
+            { title: 'HDFC Reward APK', body: 'Anand installed an "HDFC Rewards APK." Within days, ₹74,000 was transferred via OTPs the malware intercepted from his SMS.' },
+            { title: 'Amazon Pay Fake App', body: 'A Delhi shopkeeper installed a "Amazon Pay Cashback" app from a WhatsApp link. The app read his banking SMS and slowly transferred ₹1,15,000 over 3 weeks.' },
+            { title: 'Screen Share Scam', body: 'Pooja\'s "bank employee" asked her to install AnyDesk. Once connected, the caller transferred ₹1,80,000 while telling her the screen was "loading."' }
+        ],
+        warnings: ['Only install banking apps from Google Play Store or Apple App Store — never from APK links', 'Banks NEVER send app download links via SMS or WhatsApp', 'If a banking app asks for unusual permissions (SMS access, accessibility), uninstall it immediately']
+    },
+    8: {
+        what: `A <b>work-from-home scam</b> advertises impossibly high pay for simple tasks — then demands a "refundable" registration fee. The fee escalates, tasks lead to more payments, and the promised salary never materializes. Targets unemployed youth and homemakers.`,
+        stats: [
+            { num: '₹198 Cr', lbl: 'Job fraud losses in India' },
+            { num: '₹200-800', lbl: 'Actual market rate for data entry/day' },
+            { num: '68%', lbl: 'Victims contacted via Telegram/WhatsApp' }
+        ],
+        scenarios: [
+            { title: 'Task Fee Loop', body: 'Reena paid ₹500 for a "data entry WFH job." First task required buying ₹1,500 of products. Then insurance fees. Then upgrade packages. Total loss: ₹22,000.' },
+            { title: 'YouTube Like Scam', body: 'A student earned ₹500 liking YouTube videos via Telegram. Asked to deposit ₹2,000 to "unlock withdrawals." Wallet disappeared.' },
+            { title: 'Amazon Product Reviewer', body: 'A homemaker paid ₹1,000 for training, ₹3,000 for certification, ₹8,000 for a "starter kit." No job ever materialized.' }
+        ],
+        warnings: ['No legitimate employer charges registration, training, or deposit fees — ever', 'Market rate for data entry is ₹200-800/day — anything ₹5,000+ is a scam', 'Verify jobs on LinkedIn, Naukri.com, or company websites — not WhatsApp groups']
+    },
+    9: {
+        what: `A <b>Ponzi / fake investment scheme</b> promises extraordinarily high, guaranteed returns — often doubling your money in days. Early investors are paid using new investor money. When recruitment slows, the scheme collapses and most investors lose everything.`,
+        stats: [
+            { num: '₹7,200 Cr', lbl: 'Ponzi/investment fraud losses in India' },
+            { num: '5,200%', lbl: 'Annual return "double in 7 days" implies' },
+            { num: '93%', lbl: 'Ponzi investors who lose everything' }
+        ],
+        scenarios: [
+            { title: 'Telegram Investment Group', body: 'Santosh joined a Telegram group showing daily profits. He invested ₹50,000, got ₹12,000 back. Convinced, he invested ₹3 lakh more. The admin vanished.' },
+            { title: 'Crypto Doubling Bot', body: 'An MBA student invested ₹1 lakh in an "AI crypto bot" promising 30% daily returns. Initial withdrawals worked. Family put in ₹9 lakh total. Platform crashed.' },
+            { title: 'Chit Fund Fraud', body: 'A Coimbatore chit fund operator promised 24% annual interest. He collected ₹4.2 crore from 340 families. When it collapsed, nearly everyone lost their savings.' }
+        ],
+        warnings: ['SEBI regulations prohibit promising guaranteed investment returns — any such scheme is illegal', 'Verify investment firms at sebi.gov.in before investing a single rupee', 'When early investors are paid, that\'s how Ponzi schemes build trust — collapse always comes later']
+    },
+    10: {
+        what: `A <b>"digital arrest" scam</b> is one of India's most sophisticated frauds. Criminals impersonate CBI, Narcotics Bureau, ED, or Supreme Court officials and claim your identity/phone was used in illegal activity. They demand you stay on a video call ("digital arrest") and pay a fine. PM Modi specifically warned the nation about this in October 2024.`,
+        stats: [
+            { num: '₹1,200 Cr', lbl: 'Digital arrest fraud losses (2024 est.)' },
+            { num: '92 hrs', lbl: 'Longest recorded "digital arrest" duration' },
+            { num: '60+', lbl: 'Average age of most victims' }
+        ],
+        scenarios: [
+            { title: 'Retired IAS Victim', body: 'A 68-year-old retired IAS officer was kept on video call for 12 hours by "CBI officers." They showed fake ID cards and arrest warrants. He transferred ₹83 lakh over two days.' },
+            { title: 'Parcel Narcotics Scam', body: 'A Bengaluru IT professional was told a parcel in her name contained narcotics. She was transferred to a "Mumbai Police officer." She paid ₹18 lakh over 4 days while being told not to tell anyone.' },
+            { title: 'WhatsApp Video FIR', body: 'A Pune professor was shown a fake FIR and arrest warrant on WhatsApp video. The "officer" threatened media coverage. He paid ₹11 lakh in cryptocurrency.' }
+        ],
+        warnings: ['Digital arrest has NO legal basis in Indian law — it does not exist', 'Real police serve notices physically — never through video calls', 'If you receive such a call: hang up immediately and call 1930 to report']
+    },
+    11: {
+        what: `A <b>deepfake / AI voice cloning scam</b> uses AI to clone the voice of a family member or colleague from just 3-5 seconds of audio obtained from social media videos. The cloned voice fabricates an emergency — accident, arrest, hospital — and demands immediate money.`,
+        stats: [
+            { num: '3 sec', lbl: 'Audio needed to clone a voice with AI' },
+            { num: '400%', lbl: 'Increase in AI voice fraud (2023-24)' },
+            { num: '₹640 Cr', lbl: 'AI fraud losses estimated in India' }
+        ],
+        scenarios: [
+            { title: 'Son\'s Hospital Voice', body: 'A Gurugram mother received a call from what sounded exactly like her son saying he was in an accident. She transferred ₹1.5 lakh before reaching her son — who was safe at work.' },
+            { title: 'CEO Wire Transfer', body: 'A Mumbai CFO received a WhatsApp voice message from what sounded like her CEO requesting an urgent ₹45 lakh vendor payment. The company lost the entire amount.' },
+            { title: 'Friend Stuck Abroad', body: 'Amit received a call from his best friend\'s voice saying he was stuck in Dubai needing ₹80,000. His friend was home in Pune the entire time.' }
+        ],
+        warnings: ['Always hang up and call the person back on their known number before sending money', 'Establish a family "safe word" that an AI cannot guess — your best defense', 'Take 60 seconds to verify — scammers rely on panic, not logic']
+    },
+    12: {
+        what: `A <b>bank KYC verification scam</b> mimics official bank communications claiming your account will be blocked unless you update KYC immediately. The fake page collects bank account numbers, Aadhaar, PAN, and critically — the OTP sent to your phone. With the OTP, criminals drain your account.`,
+        stats: [
+            { num: '₹856 Cr', lbl: 'KYC fraud losses in India' },
+            { num: '82%', lbl: 'Victims received threat via SMS/WhatsApp' },
+            { num: '30 min', lbl: 'Typical urgency window in KYC scams' }
+        ],
+        scenarios: [
+            { title: 'SBI KYC Update SMS', body: 'Sunita received an SMS with a link to "update SBI KYC within 2 hours." The page looked identical to SBI\'s. After entering her OTP, ₹35,000 was transferred.' },
+            { title: 'HDFC OTP Phone Call', body: 'A "HDFC KYC team" caller guided Mukesh through "verification." The caller had partial account information (from breaches) which built trust. Mukesh shared the OTP and lost ₹62,000.' },
+            { title: 'PAN-Aadhaar Linking', body: 'During PAN-Aadhaar linking panic, millions of fake SMS messages were sent. Many people submitted both documents on phishing sites, leading to identity theft.' }
+        ],
+        warnings: ['Banks do KYC updates through official apps or by visiting the branch — never through SMS links', 'The OTP is yours alone — sharing it with anyone, including "bank staff," instantly enables fraud', 'Call your bank directly on the number on the back of your card to verify any KYC request']
+    },
+    13: {
+        what: `A <b>social media phishing scam</b> targets Instagram/Facebook accounts by sending fake "account suspension" or "blue tick verification" notices. Victims are directed to fake login pages that steal credentials. Hijacked accounts are used to scam the victim's own followers.`,
+        stats: [
+            { num: '1.4M', lbl: 'Instagram accounts hacked in India' },
+            { num: '₹890', lbl: 'Average dark web price for Indian Instagram account' },
+            { num: '48 hrs', lbl: 'Time before hacked account is monetized' }
+        ],
+        scenarios: [
+            { title: 'Influencer Takeover', body: 'A Mumbai food blogger with 85k followers received a DM about copyright. She clicked and entered her password. Her account was used for a crypto scam within hours.' },
+            { title: 'Blue Tick Phishing', body: 'A Delhi photographer got an email from "Instagram Verified Support." He entered credentials. His account was sold to a scammer who changed the username.' },
+            { title: 'Business Page Ransom', body: 'A Hyderabad restaurant owner lost access to his Facebook page (12k followers) after fake copyright phishing. The hacker demanded ₹25,000 to restore access.' }
+        ],
+        warnings: ['Instagram, Facebook, and Meta NEVER ask for passwords through external links', 'Enable 2FA on all social accounts — it prevents 99% of credential theft', 'Legitimate platform communications appear inside the app, not external sites']
+    },
+    14: {
+        what: `An <b>electricity disconnection scam</b> uses fear of losing an essential service to pressure victims into making immediate payments through unofficial channels. Scammers impersonate BESCOM, MSEDCL, UPPCL, or other state utilities via SMS.`,
+        stats: [
+            { num: '₹234 Cr', lbl: 'Utility fraud losses in India' },
+            { num: '30 min', lbl: 'Typical "disconnection" deadline in scam SMS' },
+            { num: '3x', lbl: 'Spike in cases during summer months' }
+        ],
+        scenarios: [
+            { title: 'Mumbai MSEDCL SMS', body: 'Rajesh got an SMS saying his power would be cut in 30 minutes. He called the number, was guided to pay ₹4,800 via UPI to a personal ID. His real bill was ₹1,200.' },
+            { title: 'Elderly Phone Call', body: 'A 72-year-old Pune resident was told his meter had a fault requiring ₹6,500. He paid cash to a person who arrived with a fake ID.' },
+            { title: 'Duplicate Bill Phishing', body: 'A Bengaluru resident Googled her electricity bill. She clicked a fake BESCOM site that collected her consumer number and card details. ₹14,000 was deducted.' }
+        ],
+        warnings: ['Verify bills only at your state utility\'s official website — bookmark it now', 'Utility companies NEVER collect payments via personal UPI IDs', 'Call the number printed on your physical bill, not numbers from SMS messages']
+    },
+    15: {
+        what: `An <b>income tax refund scam</b> sends fake refund notifications claiming a tax refund is "approved" and needs bank details to process. Victims submit PAN, bank account, and IFSC details. These are used for identity theft, fraudulent loans, and financial fraud.`,
+        stats: [
+            { num: '₹480 Cr', lbl: 'Tax fraud / identity theft losses' },
+            { num: '5 min', lbl: 'Time to open a loan in victim\'s name with PAN+bank' },
+            { num: '24 hrs', lbl: 'Typical "claim window" used to create urgency' }
+        ],
+        scenarios: [
+            { title: 'SMS Tax Refund Link', body: 'Pradeep got SMS from "VM-ITAXIN" saying ₹24,500 refund was approved. He submitted PAN and bank details. A ₹4.8 lakh personal loan was taken in his name within days.' },
+            { title: 'ClearTax Impersonation', body: 'An email mimicking ClearTax told a CA her client\'s refund needed re-verification. She submitted details for 3 clients. All accounts were compromised.' },
+            { title: 'IT Department Fake Call', body: 'A Lucknow teacher was called about a ₹48,000 refund. She was guided through a fake site and shared her OTP. ₹52,000 was debited.' }
+        ],
+        warnings: ['Income tax refunds go directly to your pre-registered bank account — you never need to "claim" them', 'Check legitimate refund status only at incometax.gov.in — never through SMS links', 'PAN + bank account details together can enable loans, fake tax filings, and complete identity theft']
+    },
+
+    16: {
+        what: `A <b>corporate phishing scam</b> targets employees with fake IT department emails claiming their work account password needs immediate reset. Victims enter current credentials on a fake Microsoft 365 or Google Workspace page. With corporate credentials, attackers access emails and financial systems.`,
+        stats: [
+            { num: '$2.4B', lbl: 'BEC fraud global losses (FBI, 2023)' },
+            { num: '91%', lbl: 'Cyberattacks start with phishing email' },
+            { num: '19 days', lbl: 'Avg time before corporate breach detected' }
+        ],
+        scenarios: [
+            { title: 'CFO Wire Transfer Fraud', body: 'A Bengaluru startup\'s finance manager got an email from the "CEO" requesting an urgent ₹28 lakh vendor payment. No verification was done. Money went to a fraud account in Hong Kong.' },
+            { title: 'IT Password Reset', body: 'A Delhi law firm employee reset her password on a fake "Microsoft 365" page. Attackers spent 3 weeks reading confidential client emails.' },
+            { title: 'HR Data Breach', body: 'A Mumbai company\'s HR executive clicked a "payroll system update" link and entered her credentials. Salary, PAN, and bank details for all 340 employees were stolen.' }
+        ],
+        warnings: ['IT departments and Microsoft NEVER ask for your current password via email links', 'Enable MFA on all corporate accounts — it blocks 99.9% of credential theft', 'Always verify unusual requests by calling the sender on their official number']
+    },
+    17: {
+        what: `A <b>SIM swap / telecom scam</b> tricks victims into sharing their Aadhaar, mobile number, and OTP. With this information, fraudsters call the carrier and port the number to a new SIM they control. Once they have your number, they intercept all bank OTPs — bypassing every layer of mobile-based 2FA.`,
+        stats: [
+            { num: '₹320 Cr', lbl: 'SIM swap fraud losses in India' },
+            { num: '4 hrs', lbl: 'Avg time for accounts to be drained after SIM swap' },
+            { num: '15 min', lbl: 'Time to complete a fraudulent SIM port in India' }
+        ],
+        scenarios: [
+            { title: '5G Upgrade SIM Swap', body: 'Kiran got a call from "Jio 5G support" saying her SIM needed upgrading. She shared her Aadhaar and OTP. Her number was ported within 2 hours. By evening, ₹2.4 lakh was cleared from her HDFC account.' },
+            { title: 'Telecom Store Attack', body: 'A fraudster visited a Vodafone store with Rahul\'s Aadhaar details (from a data breach) and a fake ID. He got a replacement SIM. Rahul\'s accounts were emptied over 6 hours.' },
+            { title: 'Customer Care Scam', body: 'A caller claiming to be Airtel support convinced a businessman his SIM had a "network fault." He pressed 1 for "refresh" — this initiated a SIM port. His trading account was liquidated for ₹8.7 lakh.' }
+        ],
+        warnings: ['Telecom companies NEVER ask for OTPs over calls or messages to perform SIM upgrades', 'If your phone suddenly has no signal, call your carrier from another phone — you may be a SIM swap victim', 'Request your carrier add a SIM lock/port freeze requiring biometric verification for any SIM changes']
+    },
+    18: {
+        what: `A <b>fake scholarship scam</b> targets students with unsolicited "congratulations" messages claiming they have been selected for a government scholarship. The scam collects Aadhaar, bank details, and sometimes academic certificates — all valuable for identity theft.`,
+        stats: [
+            { num: '₹186 Cr', lbl: 'Education fraud losses in India' },
+            { num: '18-24', lbl: 'Most targeted age group (years)' },
+            { num: '400+', lbl: 'Fake scholarship portals detected' }
+        ],
+        scenarios: [
+            { title: 'NSP Fake Portal', body: 'A Class 12 student from Bihar got a WhatsApp forward about "PM Scholarship ₹50,000." She submitted Aadhaar, bank account, and marksheets on a fake portal. Her bank account was used to route fraud transactions for 3 months.' },
+            { title: 'College Fee Refund Fraud', body: 'During COVID, hundreds of engineering students got emails claiming their college fees would be refunded. They submitted bank details. Instead of refunds, ₹5,000-20,000 was debited via unauthorized transactions.' },
+            { title: 'Abroad Scholarship Fee', body: 'A Delhi postgraduate student was told she "won" a US university scholarship. The agency asked for ₹85,000 in "VISA processing fees." The agency vanished.' }
+        ],
+        warnings: ['All legitimate scholarships require you to APPLY — you cannot be selected without applying', 'Verify scholarships at scholarships.gov.in or your state\'s official education portal', 'Never share Aadhaar, bank details, or academic certificates on unverified websites']
+    },
+    19: {
+        what: `A <b>copyright violation account scam</b> sends threatening messages claiming your Facebook Page or Instagram account has violated copyright policies and will be deleted. Victims are directed to fake "Meta Support" pages that harvest passwords. Accounts are then sold or used for scam operations.`,
+        stats: [
+            { num: '2.1M', lbl: 'Facebook pages hijacked globally (2023)' },
+            { num: '48 hrs', lbl: 'Time before hijacked page is used for scams' },
+            { num: '₹25K', lbl: 'Ransom demanded on average for page return' }
+        ],
+        scenarios: [
+            { title: 'Restaurant Page Hijack', body: 'A Pune restaurant owner\'s verified Facebook Page (18k followers) was hijacked. The hacker changed the name to a crypto exchange and posted fake investment links.' },
+            { title: 'Politician Support Page', body: 'A political party\'s state support page admin clicked a "Meta Policy Violation" email. His credentials were stolen. The page was used to spread misinformation and request donations to a fake UPI ID for 3 days.' },
+            { title: 'Instagram Creator Ransom', body: 'A fashion influencer with 240k followers got a DM about copyright violation. After entering her password, she lost access. The hacker demanded ₹2.5 lakh to restore access.' }
+        ],
+        warnings: ['Meta and Instagram NEVER send copyright notices via DM from personal accounts', 'All legitimate platform policy notifications appear in your official notification center inside the app', 'Appeal real violations through the official Help Center — search for "Meta Help Center" on Google and navigate directly']
+    },
+    20: {
+        what: `A <b>fake customs / parcel fee scam</b> sends SMS or email claiming an international parcel is held at customs and requires a clearance fee. Most victims haven\'t ordered anything internationally. Even if you have, customs fees in India are NEVER collected via SMS payment links.`,
+        stats: [
+            { num: '₹165 Cr', lbl: 'Customs/parcel fraud losses in India' },
+            { num: '87%', lbl: 'Victims had NOT ordered anything internationally' },
+            { num: '₹500-5K', lbl: 'Typical fake customs fee range' }
+        ],
+        scenarios: [
+            { title: 'FedEx Customs SMS', body: 'Ananya received SMS from "FX-FEDEX" saying a parcel in her name was held at Delhi customs, requiring ₹1,950 clearance. She hadn\'t ordered anything but paid out of curiosity. Her card was then used for ₹23,000 in international purchases.' },
+            { title: 'Amazon Global Scam', body: 'A Bengaluru family who had recently shopped on Amazon Global received a fake customs email. They paid ₹2,800 via card. The "tracking" was fake; the original order arrived fine a week later.' },
+            { title: 'Gift from Abroad', body: 'An NRI sent a gift parcel to his parents in Kolkata. Scammers intercepted the tracking number (visible on public tracking sites) and called the parents demanding ₹4,500 customs. The real courier arrived the next day with no charge.' }
+        ],
+        warnings: ['Genuine customs duties are assessed and collected at delivery or through official CBIC portals — never via SMS payment links', 'Always track parcels directly on the courier\'s official website using the tracking number from the sender', 'If you receive a customs notice, verify by calling the courier company directly on their official number']
+    },
+    21: {
+        what: `A <b>disaster relief / charity scam</b> exploits human empathy during floods, earthquakes, cyclones, or other crises by creating fake relief fund pages and forwarding emotional appeals on WhatsApp. Donations go directly into the fraudster\'s account. No aid reaches any victims.`,
+        stats: [
+            { num: '₹92 Cr', lbl: 'Charity fraud during Indian disasters' },
+            { num: '72 hrs', lbl: 'Time for fake relief funds to appear after disaster' },
+            { num: '1,200+', lbl: 'Fake charity campaigns after 2023 floods' }
+        ],
+        scenarios: [
+            { title: 'Kerala Flood Chain', body: 'During Kerala floods, a WhatsApp forward with emotional video and UPI ID went viral, collecting "donations for flood victims." The account received ₹2.3 crore. No relief was organized. The holder was arrested 6 months later.' },
+            { title: 'Fake UNICEF Campaign', body: 'A Facebook page titled "UNICEF India Emergency Fund" ran ads during COVID asking for ₹500 donations. 14,000 people donated before the page was taken down. UNICEF confirmed no such campaign.' },
+            { title: 'Earthquake Relief', body: 'After the 2023 Turkey earthquake, several Indian WhatsApp groups circulated donation links. Victims donated ₹1,000-10,000 each. None of the funds went to any relief organization.' }
+        ],
+        warnings: ['Verify charities at ngodarpan.niti.gov.in before donating — it lists all legitimate registered NGOs', 'Donate through established organizations: PM National Relief Fund (pmrdf.in), Red Cross, or state CM Relief Fund — official sites only', 'Emotional urgency in donation requests is a manipulation tactic — legitimate charities welcome your time to verify them']
+    },
+    22: {
+        what: `A <b>fake public Wi-Fi / evil twin attack</b> sets up a rogue Wi-Fi network with a name like "Airport_Free_WiFi" or "Hotel_Guest_Net" and creates a fake login portal that requests your email and password. Once captured, the credentials give attackers access to your email — which can be used to reset passwords on every other account linked to that email.`,
+        stats: [
+            { num: '25%', lbl: 'Public Wi-Fi hotspots globally are unsecured/rogue' },
+            { num: '6 min', lbl: 'Avg time for email breach to spread to 5+ accounts' },
+            { num: '₹310 Cr', lbl: 'Credential theft via public networks in India' }
+        ],
+        scenarios: [
+            { title: 'Airport Rogue Hotspot', body: 'A Mumbai businessman connected to "MumbaiAirport_FreeWifi." The captive portal asked for his Gmail to log in. Within 3 hours, his Gmail was accessed, his bank account reset, and ₹1.8 lakh transferred.' },
+            { title: 'Café Evil Twin', body: 'A college student connected to "CafeCoffeeDay_Free" (a rogue hotspot). She entered her password on a login page. Her Instagram, Snapchat, and email were compromised within hours.' },
+            { title: 'Hotel Wi-Fi Theft', body: 'A corporate traveller connected to "MarriottGuest." The portal requested work email credentials. His company\'s Microsoft 365 account was accessed, and sensitive client data was downloaded over 4 days.' }
+        ],
+        warnings: ['Never enter your email password on any Wi-Fi login portal — legitimate public Wi-Fi only asks for a phone number or room number, never a password', 'Use a VPN whenever connecting to any public Wi-Fi network — it encrypts all your traffic', 'Ask hotel/café staff for the exact name of their Wi-Fi network before connecting — rogue networks often have very similar names']
+    }
+};
+
+// ─── SHOW INFO PAGE ─────────────────────────────────────────────────────────
+// ─── PER-MODULE THEME PALETTE ────────────────────────────────────────────────
+// Each entry: { primary, secondary, accent, glow, animation, particle, heroBg }
+const MODULE_THEMES = {
+    0: { primary: '#f59e0b', secondary: '#d97706', accent: '#fbbf24', glow: 'rgba(245,158,11,.35)', animation: 'anim-money', particle: '💸', heroBg: 'linear-gradient(135deg,rgba(245,158,11,.12),rgba(217,119,6,.06))' },
+    1: { primary: '#6366f1', secondary: '#4f46e5', accent: '#818cf8', glow: 'rgba(99,102,241,.35)', animation: 'anim-pulse', particle: '💼', heroBg: 'linear-gradient(135deg,rgba(99,102,241,.12),rgba(79,70,229,.06))' },
+    2: { primary: '#ec4899', secondary: '#db2777', accent: '#f9a8d4', glow: 'rgba(236,72,153,.35)', animation: 'anim-shake', particle: '📱', heroBg: 'linear-gradient(135deg,rgba(236,72,153,.12),rgba(219,39,119,.06))' },
+    3: { primary: '#f59e0b', secondary: '#92400e', accent: '#fcd34d', glow: 'rgba(245,158,11,.4)', animation: 'anim-shimmer', particle: '🥇', heroBg: 'linear-gradient(135deg,rgba(245,158,11,.15),rgba(146,64,14,.06))' },
+    4: { primary: '#8b5cf6', secondary: '#7c3aed', accent: '#c4b5fd', glow: 'rgba(139,92,246,.35)', animation: 'anim-spin', particle: '🎰', heroBg: 'linear-gradient(135deg,rgba(139,92,246,.12),rgba(124,58,237,.06))' },
+    5: { primary: '#ef4444', secondary: '#b91c1c', accent: '#fca5a5', glow: 'rgba(239,68,68,.4)', animation: 'anim-zap', particle: '💳', heroBg: 'linear-gradient(135deg,rgba(239,68,68,.12),rgba(185,28,28,.06))' },
+    6: { primary: '#10b981', secondary: '#059669', accent: '#6ee7b7', glow: 'rgba(16,185,129,.35)', animation: 'anim-bounce', particle: '🎁', heroBg: 'linear-gradient(135deg,rgba(16,185,129,.12),rgba(5,150,105,.06))' },
+    7: { primary: '#f97316', secondary: '#c2410c', accent: '#fdba74', glow: 'rgba(249,115,22,.35)', animation: 'anim-glitch', particle: '⭐', heroBg: 'linear-gradient(135deg,rgba(249,115,22,.12),rgba(194,65,12,.06))' },
+    8: { primary: '#14b8a6', secondary: '#0d9488', accent: '#5eead4', glow: 'rgba(20,184,166,.35)', animation: 'anim-type', particle: '🏠', heroBg: 'linear-gradient(135deg,rgba(20,184,166,.12),rgba(13,148,136,.06))' },
+    9: { primary: '#22c55e', secondary: '#15803d', accent: '#86efac', glow: 'rgba(34,197,94,.35)', animation: 'anim-grow', particle: '📈', heroBg: 'linear-gradient(135deg,rgba(34,197,94,.12),rgba(21,128,61,.06))' },
+    10: { primary: '#ef4444', secondary: '#7f1d1d', accent: '#fca5a5', glow: 'rgba(239,68,68,.5)', animation: 'anim-alarm', particle: '👮', heroBg: 'linear-gradient(135deg,rgba(239,68,68,.18),rgba(127,29,29,.1))' },
+    11: { primary: '#a855f7', secondary: '#7e22ce', accent: '#d8b4fe', glow: 'rgba(168,85,247,.4)', animation: 'anim-wave', particle: '🤖', heroBg: 'linear-gradient(135deg,rgba(168,85,247,.14),rgba(126,34,206,.06))' },
+    12: { primary: '#3b82f6', secondary: '#1d4ed8', accent: '#93c5fd', glow: 'rgba(59,130,246,.35)', animation: 'anim-scan', particle: '🏦', heroBg: 'linear-gradient(135deg,rgba(59,130,246,.12),rgba(29,78,216,.06))' },
+    13: { primary: '#ec4899', secondary: '#9d174d', accent: '#fbcfe8', glow: 'rgba(236,72,153,.35)', animation: 'anim-flash', particle: '📸', heroBg: 'linear-gradient(135deg,rgba(236,72,153,.12),rgba(157,23,77,.06))' },
+    14: { primary: '#f59e0b', secondary: '#b45309', accent: '#fcd34d', glow: 'rgba(245,158,11,.38)', animation: 'anim-electric', particle: '⚡', heroBg: 'linear-gradient(135deg,rgba(245,158,11,.13),rgba(180,83,9,.06))' },
+    15: { primary: '#06b6d4', secondary: '#0e7490', accent: '#67e8f9', glow: 'rgba(6,182,212,.35)', animation: 'anim-slide', particle: '💰', heroBg: 'linear-gradient(135deg,rgba(6,182,212,.12),rgba(14,116,144,.06))' },
+    16: { primary: '#6366f1', secondary: '#312e81', accent: '#a5b4fc', glow: 'rgba(99,102,241,.4)', animation: 'anim-glitch', particle: '🏢', heroBg: 'linear-gradient(135deg,rgba(99,102,241,.14),rgba(49,46,129,.07))' },
+    17: { primary: '#f97316', secondary: '#7c2d12', accent: '#fed7aa', glow: 'rgba(249,115,22,.38)', animation: 'anim-signal', particle: '📶', heroBg: 'linear-gradient(135deg,rgba(249,115,22,.13),rgba(124,45,18,.06))' },
+    18: { primary: '#8b5cf6', secondary: '#4c1d95', accent: '#ddd6fe', glow: 'rgba(139,92,246,.35)', animation: 'anim-float', particle: '🎓', heroBg: 'linear-gradient(135deg,rgba(139,92,246,.12),rgba(76,29,149,.06))' },
+    19: { primary: '#3b82f6', secondary: '#1e3a8a', accent: '#bfdbfe', glow: 'rgba(59,130,246,.35)', animation: 'anim-ping', particle: '📢', heroBg: 'linear-gradient(135deg,rgba(59,130,246,.12),rgba(30,58,138,.06))' },
+    20: { primary: '#14b8a6', secondary: '#134e4a', accent: '#99f6e4', glow: 'rgba(20,184,166,.35)', animation: 'anim-bounce', particle: '✈️', heroBg: 'linear-gradient(135deg,rgba(20,184,166,.12),rgba(19,78,74,.06))' },
+    21: { primary: '#f43f5e', secondary: '#881337', accent: '#fda4af', glow: 'rgba(244,63,94,.38)', animation: 'anim-pulse', particle: '❤️', heroBg: 'linear-gradient(135deg,rgba(244,63,94,.13),rgba(136,19,55,.06))' },
+    22: { primary: '#06b6d4', secondary: '#164e63', accent: '#a5f3fc', glow: 'rgba(6,182,212,.38)', animation: 'anim-scan', particle: '📶', heroBg: 'linear-gradient(135deg,rgba(6,182,212,.13),rgba(22,78,99,.06))' },
+};
+
+function showInfoPage(id) {
+    const m = MODULES.find(x => x.id === id);
+    const info = SCAM_INFO[id];
+    if (!info) { startModule(id); return; }
+
+    const th = MODULE_THEMES[id] || MODULE_THEMES[1];
+
+    document.getElementById('info-risk-display').textContent = state.risk;
+    document.getElementById('info-done-display').textContent = state.completed.length;
+
+    // Inject per-module CSS custom props + animation keyframes
+    let styleEl = document.getElementById('module-theme-style');
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'module-theme-style'; document.head.appendChild(styleEl); }
+    styleEl.textContent = `
+        #screen-info { --mt-primary:${th.primary}; --mt-secondary:${th.secondary}; --mt-accent:${th.accent}; --mt-glow:${th.glow}; }
+        #screen-info .info-tag { background:${th.primary}22; color:${th.accent}; border-color:${th.primary}44; }
+        #screen-info .info-section-label { color:${th.accent}; border-color:${th.primary}33; }
+        #screen-info .info-what { border-color:${th.primary}33; border-left:3px solid ${th.primary}; }
+        #screen-info .info-stat { border-color:${th.primary}33; }
+        #screen-info .info-stat-num { color:${th.primary}; }
+        #screen-info .info-stat:hover { box-shadow:0 0 18px ${th.glow}; transform:translateY(-3px); border-color:${th.primary}77; }
+        #screen-info .info-scenario { border-left-color:${th.primary}; }
+        #screen-info .info-scenario-num { color:${th.primary}; }
+        #screen-info .info-scenario:hover { box-shadow:0 4px 20px ${th.glow}; transform:translateX(4px); }
+        #screen-info .info-warning-box { background:${th.primary}0d; border-color:${th.primary}33; }
+        #screen-info .info-warning-icon { color:${th.accent}; }
+        #screen-info .info-hero-banner { background:${th.heroBg}; border-color:${th.primary}33; }
+        #screen-info .info-cta-area { background:${th.heroBg}; border-color:${th.primary}44; }
+        #screen-info .info-cta-btn { background:linear-gradient(135deg,${th.primary},${th.secondary}); box-shadow:0 4px 20px ${th.glow}; }
+        #screen-info .info-cta-btn:hover { box-shadow:0 6px 30px ${th.glow}; transform:translateY(-2px); }
+        #screen-info .module-nav-accent { background:${th.primary}; }
+        #screen-info .info-icon-wrap { background:${th.heroBg}; border:2px solid ${th.primary}44; box-shadow:0 0 24px ${th.glow}; animation:${th.animation} 2.5s infinite; }
+        #screen-info .info-particle { color:${th.primary}; }
+        #screen-info .info-title span { background:linear-gradient(90deg,${th.primary},${th.accent}); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        @keyframes anim-money  { 0%,100%{transform:translateY(0) rotate(0deg)} 25%{transform:translateY(-6px) rotate(-4deg)} 75%{transform:translateY(-3px) rotate(4deg)} }
+        @keyframes anim-pulse  { 0%,100%{transform:scale(1);box-shadow:0 0 24px ${th.glow}} 50%{transform:scale(1.08);box-shadow:0 0 36px ${th.glow}} }
+        @keyframes anim-shake  { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-6deg)} 40%{transform:rotate(6deg)} 60%{transform:rotate(-4deg)} 80%{transform:rotate(4deg)} }
+        @keyframes anim-shimmer{ 0%,100%{box-shadow:0 0 10px ${th.glow}} 50%{box-shadow:0 0 40px ${th.glow},0 0 60px ${th.glow}} }
+        @keyframes anim-spin   { 0%{transform:rotate(0deg) scale(1)} 50%{transform:rotate(180deg) scale(1.1)} 100%{transform:rotate(360deg) scale(1)} }
+        @keyframes anim-zap    { 0%,90%,100%{transform:scale(1)} 95%{transform:scale(1.15) skew(-3deg)} }
+        @keyframes anim-bounce { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-10px)} 60%{transform:translateY(-5px)} }
+        @keyframes anim-glitch { 0%,100%{transform:none;filter:none} 92%{transform:skewX(0)} 93%{transform:skewX(-4deg);filter:hue-rotate(40deg)} 94%{transform:skewX(4deg)} 95%{transform:none;filter:none} }
+        @keyframes anim-type   { 0%,100%{opacity:1} 50%{opacity:.6} }
+        @keyframes anim-grow   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+        @keyframes anim-alarm  { 0%,100%{box-shadow:0 0 16px ${th.glow}} 25%{box-shadow:0 0 40px ${th.glow},0 0 0 6px ${th.primary}22} 50%{box-shadow:0 0 16px ${th.glow}} 75%{box-shadow:0 0 40px ${th.glow},0 0 0 10px ${th.primary}11} }
+        @keyframes anim-wave   { 0%,100%{transform:translateY(0) scale(1)} 33%{transform:translateY(-8px) scale(1.05)} 66%{transform:translateY(-4px) scale(0.97)} }
+        @keyframes anim-scan   { 0%,100%{box-shadow:0 0 10px ${th.glow}} 50%{box-shadow:0 0 30px ${th.glow},inset 0 0 20px ${th.primary}11} }
+        @keyframes anim-flash  { 0%,100%{opacity:1} 48%,52%{opacity:.7;filter:brightness(1.3)} 50%{opacity:1;filter:brightness(1.6)} }
+        @keyframes anim-electric{ 0%,100%{transform:none} 10%{transform:skewX(2deg)} 20%{transform:skewX(-2deg)} 30%,100%{transform:none} }
+        @keyframes anim-slide  { 0%,100%{transform:translateX(0)} 50%{transform:translateX(5px)} }
+        @keyframes anim-signal { 0%,100%{transform:scale(1)} 25%{transform:scale(1.06)} 75%{transform:scale(0.95)} }
+        @keyframes anim-float  { 0%,100%{transform:translateY(0) rotate(0)} 50%{transform:translateY(-8px) rotate(3deg)} }
+        @keyframes anim-ping   { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:.8} }
+        .info-stat, .info-scenario, .info-warning-box { transition:all .2s ease; }
+      `;
+
+    const diffLabel = m.diff === 'high' ? '🔴 High Risk' : m.diff === 'med' ? '🟡 Medium Risk' : '🟢 Low Risk';
+
+    const statsHTML = info.stats.map(s => `
+        <div class="info-stat">
+          <div class="info-stat-num">${eh(s.num)}</div>
+          <div class="info-stat-lbl">${eh(s.lbl)}</div>
+        </div>`).join('');
+
+    const scenariosHTML = info.scenarios.map((s, i) => `
+        <div class="info-scenario">
+          <div class="info-scenario-num">📍 Real-Life Case ${i + 1}</div>
+          <div class="info-scenario-title">${eh(s.title)}</div>
+          <div class="info-scenario-body">${eh(s.body)}</div>
+        </div>`).join('');
+
+    const warningsHTML = info.warnings.map(w => `
+        <div class="info-warning-box">
+          <span class="info-warning-icon">⚠️</span>
+          <span>${eh(w)}</span>
+        </div>`).join('');
+
+    document.getElementById('info-content').innerHTML = `
+        <div class="info-back" onclick="goHome()">← Back to Modules</div>
+
+        <div class="info-hero-banner" style="border-radius:18px;padding:28px 24px;margin-bottom:28px;border:1px solid;">
+          <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+            <div class="info-icon-wrap" style="width:80px;height:80px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:40px;flex-shrink:0;">${eh(m.icon)}</div>
+            <div style="flex:1;min-width:200px;">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">
+                <span class="info-tag">${eh(m.tag)}</span>
+                <span style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:${m.diff === 'high' ? 'rgba(239,68,68,.15)' : m.diff === 'med' ? 'rgba(251,191,36,.15)' : 'rgba(34,197,94,.15)'};color:${m.diff === 'high' ? '#fca5a5' : m.diff === 'med' ? '#fde68a' : '#86efac'}">${eh(diffLabel)}</span>
+              </div>
+              <div class="info-title" style="margin-bottom:8px;"><span>${eh(m.title)}</span></div>
+              <div class="info-subtitle">${eh(m.desc)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">What Is This Scam?</div>
+          <div class="info-what">${info.what}</div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">By The Numbers</div>
+          <div class="info-stat-row">${statsHTML}</div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">Real-Life Scenarios</div>
+          ${scenariosHTML}
+        </div>
+
+        <div class="info-section">
+          <div class="info-section-label">Key Warning Signs To Remember</div>
+          ${warningsHTML}
+        </div>
+
+        <div class="info-cta-area" style="margin-top:36px;border-radius:18px;padding:28px;text-align:center;border:1px solid;">
+          <div style="font-size:36px;margin-bottom:10px;">${th.particle}</div>
+          <div class="info-cta-heading" style="font-size:20px;font-weight:700;margin-bottom:10px;">Ready to Test Your Awareness?</div>
+          <div class="info-cta-sub" style="font-size:14px;color:var(--text2);line-height:1.65;margin-bottom:24px;">
+            You've studied how <b style="color:var(--text)">${eh(m.title)}</b> works and seen real-life victims.<br>
+            Now enter the simulation — spot the red flags before you submit.
+          </div>
+          <button class="info-cta-btn" onclick="startModule(${id})" style="border:none;padding:15px 40px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;font-family:var(--font);color:#fff;transition:all .2s;">
+            🚨 Enter the Simulation →
+          </button>
+          <div style="margin-top:14px;font-size:12px;color:var(--text3);">No real data at risk · Educational simulation only</div>
+        </div>
+      `;
+    go('info');
+}
+
+// ─── STATE PERSISTENCE ─────────────────────────────────────
+// ─── STATE PERSISTENCE ─────────────────────────────────────
+const STATE_KEY = 'scamshield_state';
+
+function saveState() {
+    try {
+        const toSave = {
+            currentUser: state.currentUser,
+            sessionId: state.sessionId,
+            completed: state.completed,
+            risk: state.risk,
+            games_played: state.games_played || [],
+            total_score: state.total_score || 0
+        };
+        localStorage.setItem(STATE_KEY, JSON.stringify(toSave));
+    } catch (e) {
+        console.warn('Failed to save state:', e);
+    }
+}
+
+function loadState() {
+    try {
+        const saved = localStorage.getItem(STATE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.currentUser) state.currentUser = parsed.currentUser;
+            if (parsed.sessionId) state.sessionId = parsed.sessionId;
+            if (parsed.completed) state.completed = parsed.completed;
+            if (parsed.risk !== undefined) state.risk = parsed.risk;
+            if (parsed.games_played) state.games_played = parsed.games_played;
+            if (parsed.total_score !== undefined) state.total_score = parsed.total_score;
+        }
+    } catch (e) {
+        console.warn('Failed to load state:', e);
+    }
+}
+
+function updateProgressDisplay() {
+    const doneEl = document.getElementById('nav-done');
+    if (doneEl) doneEl.textContent = (state.completed ? state.completed.length : 0) + '/23';
+
+    const riskEl = document.getElementById('nav-risk');
+    if (riskEl) {
+        const risk = state.risk || 0;
+        riskEl.textContent = 'Risk: ' + risk;
+        riskEl.style.color = risk > 60 ? 'var(--accent)' : risk > 30 ? 'var(--gold)' : 'var(--green)';
+    }
+
+    if (typeof renderModules === 'function') {
+        renderModules();
+    }
+}
+
+// Load state on page load
+loadState();
+updateProgressDisplay();
+
+// After loadState() restores from localStorage
+
+// ─── START MODULE ────────────────────────────────────────────────────────────
+
+function startModule(id) {
+    // ✨ Require login
+    if (!state.currentUser) {
+        showToast('Please login first to start simulations', 'err', 'Login Required');
+        openUserAuth('login');
+        return;
+    }
+    const m = MODULES.find(m => m.id === id);
+    state.currentModule = m; state.exposedData = [];
+    updateRiskMeter(10); state.risk = Math.max(state.risk, 10); updateNav();
+    saveState();
+    document.getElementById('scam-nav-title').textContent = m.title;
+    document.getElementById('scam-back').onclick = () => { go('home'); renderModules(); };
+    renderScamPage(m);
+    document.getElementById('alert-overlay').style.display = 'none';
+    go('scam');
+    logAttempt({ risk_score: 10 });
+}
+
+// ─── REALISTIC SIMULATION RENDERER ──────────────────────────────────────────
+function renderScamPage(m) {
+    const id = m.id;
+    let html = '';
+
+    // Helper: standard form fields
+    function fields(extraClass = '') {
+        return m.fields.map((f, i) => `
+          <div class="field-wrap">
+            <label style="font-size:12px;font-weight:600;color:#555;margin-bottom:4px;display:block">${f.p}</label>
+            <input class="scam-input ${extraClass}" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off" />
+            <span class="field-error" id="ferr-${i}"></span>
+          </div>`).join('');
+    }
+
+    // ── MODULE 0: Instant Loan App ────────────────────────────────────────────
+    if (id === 0) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:18px;overflow:hidden;max-width:400px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:#1a5276;padding:6px 16px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#fff">
+            <span>9:41 AM</span><span>📶 Jio  🔋85%</span>
+          </div>
+          <div style="background:linear-gradient(135deg,#1a5276,#2980b9);padding:20px;text-align:center;color:#fff">
+            <div style="font-size:28px;margin-bottom:4px">💰</div>
+            <div style="font-size:20px;font-weight:800;letter-spacing:.5px">FastCash Loan</div>
+            <div style="font-size:11px;opacity:.8;margin-top:2px">Instant Approval · No Branch Visit</div>
+          </div>
+          <div style="background:#e8f5e9;border-bottom:3px solid #2e7d32;padding:16px;text-align:center">
+            <div style="font-size:11px;font-weight:700;color:#1b5e20;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">✅ PRE-APPROVED OFFER</div>
+            <div style="font-size:32px;font-weight:900;color:#1b5e20">${m.amount}</div>
+            <div style="font-size:13px;color:#2e7d32;margin-top:4px">Personal Loan • 12 months • 0% processing*</div>
+          </div>
+          <div style="background:#fff3e0;padding:10px 16px;text-align:center;border-bottom:1px solid #ffe0b2;font-size:13px;color:#e65100;font-weight:600">
+            ⏰ Offer reserved for you! Expires in <span id="scam-timer" style="font-size:15px;font-weight:800">09:59</span>
+          </div>
+          <div style="padding:16px;display:flex;gap:8px;background:#f8f9fa;border-bottom:1px solid #e9ecef">
+            <div style="flex:1;background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #ddd">
+              <div style="font-size:16px;font-weight:700;color:#1a5276">1.2%</div><div style="font-size:10px;color:#888;margin-top:2px">Monthly Interest</div>
+            </div>
+            <div style="flex:1;background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #ddd">
+              <div style="font-size:16px;font-weight:700;color:#1a5276">12 Mo</div><div style="font-size:10px;color:#888;margin-top:2px">Tenure</div>
+            </div>
+            <div style="flex:1;background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #ddd">
+              <div style="font-size:16px;font-weight:700;color:#e53935">₹2,000</div><div style="font-size:10px;color:#888;margin-top:2px">Processing Fee*</div>
+            </div>
+          </div>
+          <div style="padding:20px">
+            <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eee">📋 Complete KYC to Disburse Loan</div>
+            <div class="scam-form" style="gap:12px">${fields()}</div>
+            <div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:12px;color:#e65100">
+              * Pay ₹2,000 processing fee via card to release funds directly to your account within 10 minutes
+            </div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#1a5276,#2980b9);border-radius:10px;padding:14px;font-size:15px;letter-spacing:.3px">Apply & Release Funds →</button>
+            <div class="scam-trust" style="margin-top:14px;font-size:11px;color:#888;display:flex;justify-content:center;gap:16px">
+              <span>🏦 RBI Licensed</span><span>🔒 256-bit SSL</span><span>✅ Instant Disbursal</span>
+            </div>
+            <div style="margin-top:10px;text-align:center;font-size:10px;color:#bbb">fastloan-india.co.in • fastcash@loanhelp.in</div>
+          </div>
+        </div>`;
+        startTimer();
+
+        // ── MODULE 1: Fake Job Portal ─────────────────────────────────────────────
+    } else if (id === 1) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:460px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:#0a66c2;padding:14px 20px;display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px">💼</div>
+            <div>
+              <div style="color:#fff;font-size:15px;font-weight:700">CyberHire India</div>
+              <div style="color:#a8d0f0;font-size:11px">Verified Recruitment Portal</div>
+            </div>
+            <div style="margin-left:auto;background:#fff;color:#0a66c2;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px">HIRING NOW</div>
+          </div>
+          <div style="background:#f3f9ff;border-bottom:1px solid #dce6f1;padding:16px 20px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <div style="font-size:18px;font-weight:700;color:#0a66c2">Cyber Security Analyst</div>
+                <div style="font-size:13px;color:#555;margin-top:4px">TechGuard Solutions Pvt. Ltd.</div>
+                <div style="font-size:12px;color:#888;margin-top:4px">📍 Remote / Bengaluru · Full-Time</div>
+              </div>
+              <div style="background:#e8f5e9;border:1px solid #c8e6c9;border-radius:8px;padding:8px 12px;text-align:center">
+                <div style="font-size:16px;font-weight:800;color:#2e7d32">₹12 LPA</div><div style="font-size:10px;color:#2e7d32">CTC</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:20px">
+            <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px">
+              <span style="font-size:18px">🎉</span>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:#f57f17">You have been shortlisted!</div>
+                <div style="font-size:12px;color:#8d6e63;margin-top:2px">Complete registration to confirm your interview slot. Limited seats available.</div>
+              </div>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:12px">Application Form</div>
+            <div class="scam-form">${fields()}</div>
+            <div style="background:#fce4ec;border:1px solid #f48fb1;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:12px;color:#880e4f">
+              🔒 ₹200 refundable registration fee secures your interview slot. Refunded at joining.
+            </div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#0a66c2,#0d47a1);border-radius:8px">Confirm My Interview Slot →</button>
+            <div style="text-align:center;margin-top:10px;font-size:11px;color:#aaa">hiring-cyberjobs.in · jobs@techguardindia.co.in</div>
+          </div>
+        </div>`;
+
+        // ── MODULE 2: Fake Flash Sale ──────────────────────────────────────────────
+    } else if (id === 2) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#ff6f00,#f57c00);padding:10px 16px;display:flex;align-items:center;justify-content:space-between">
+            <div style="color:#fff;font-size:18px;font-weight:800">🛒 ShopFast India</div>
+            <div style="background:#fff;color:#f57c00;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px">FLASH SALE</div>
+          </div>
+          <div style="background:#b71c1c;color:#fff;text-align:center;padding:10px;font-size:14px;font-weight:600;animation:blink 1s infinite">
+            ⚡ FLASH SALE ENDS IN <span id="scam-timer" style="font-size:16px;font-weight:800;font-family:monospace">09:59</span>
+          </div>
+          <div style="padding:20px">
+            <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
+              <div style="width:90px;height:90px;background:#f5f5f5;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0">📱</div>
+              <div style="flex:1">
+                <div style="font-size:16px;font-weight:700;color:#111">Apple iPhone 16 Pro</div>
+                <div style="margin-top:8px;display:flex;align-items:baseline;gap:8px">
+                  <span style="font-size:24px;font-weight:800;color:#c62828">₹2,999</span>
+                  <span style="font-size:13px;color:#aaa;text-decoration:line-through">₹1,39,900</span>
+                </div>
+                <div style="background:#e8f5e9;display:inline-block;border-radius:4px;padding:2px 8px;font-size:11px;color:#2e7d32;font-weight:700;margin-top:4px">98% OFF</div>
+              </div>
+            </div>
+            <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 14px;font-size:12px;color:#e65100;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+              <span style="font-size:16px">🔥</span><span><b>Only 3 units left!</b> 1,247 people are viewing this item</span>
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#ff6f00,#f57c00);border-radius:8px;margin-top:8px">Buy Now — Reserve My iPhone →</button>
+          </div>
+        </div>`;
+        startTimer();
+
+        // ── MODULE 3: Fake Gold Investment ────────────────────────────────────────
+    } else if (id === 3) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#7d5a00,#c9960c);padding:18px;text-align:center;color:#fff">
+            <div style="font-size:36px">🥇</div>
+            <div style="font-size:20px;font-weight:800;letter-spacing:.5px">GoldVault India</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Certified · Hallmarked · Insured</div>
+          </div>
+          <div style="background:#fffde7;border-bottom:2px solid #ffc107;padding:16px;text-align:center">
+            <div style="font-size:11px;font-weight:700;color:#856404;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">🏅 BIS Hallmarked 24K Gold Coin</div>
+            <div style="display:flex;justify-content:center;align-items:baseline;gap:10px;margin:8px 0">
+              <span style="font-size:28px;font-weight:900;color:#7d5a00">₹4,999</span>
+              <span style="font-size:14px;color:#aaa;text-decoration:line-through">₹74,850</span>
+            </div>
+            <div style="background:#ffc107;display:inline-block;border-radius:4px;padding:3px 10px;font-size:12px;color:#fff;font-weight:700;margin-top:6px">LIMITED STOCK — 7 UNITS ONLY</div>
+          </div>
+          <div style="padding:20px">
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#7d5a00,#c9960c);border-radius:8px;margin-top:4px">Order Now — Claim Offer →</button>
+            <div style="margin-top:10px;text-align:center;font-size:10px;color:#bbb">goldcoin-offer24k.com</div>
+          </div>
+        </div>`;
+
+        // ── MODULE 4: Lottery SMS ──────────────────────────────────────────────────
+    } else if (id === 4) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:400px;width:100%">
+          <div style="background:#1a1a2e;border-radius:40px;padding:16px;box-shadow:0 24px 64px rgba(0,0,0,.7);border:3px solid #333">
+            <div style="background:#000;border-radius:28px;overflow:hidden">
+              <div style="background:#111;padding:10px 20px;display:flex;justify-content:space-between;font-size:11px;color:#fff">
+                <span style="font-weight:600">9:41</span><span>📶 ● ● ○  🔋</span>
+              </div>
+              <div style="background:#1c1c1e;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #333">
+                <div style="width:36px;height:36px;background:#48d1cc;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff">NL</div>
+                <div>
+                  <div style="color:#fff;font-size:14px;font-weight:600">VM-NATIONALLOTTO</div>
+                  <div style="color:#8e8e93;font-size:11px">National Lottery Board of India</div>
+                </div>
+              </div>
+              <div style="background:#000;padding:16px;min-height:200px">
+                <div style="background:#1c1c1e;border-radius:18px 18px 18px 4px;padding:14px 16px;margin-bottom:8px;max-width:90%">
+                  <div style="color:#fff;font-size:13px;line-height:1.7">
+                    🏆 <b style="color:#ffd700">CONGRATULATIONS!</b><br><br>
+                    Your mobile number has been selected as the <b style="color:#ffd700">LUCKY WINNER</b> of the <b>National Digital Lottery 2025</b>.<br><br>
+                    Prize Amount: <span style="color:#4caf50;font-size:16px;font-weight:800">₹5,00,000</span><br><br>
+                    To claim: Pay ₹${m.amount} processing fee and submit KYC below.<br><br>
+                    <span style="color:#ff6b6b;font-size:11px">⚠ Claim expires in 24 hours</span>
+                  </div>
+                </div>
+                <div style="background:#1a1a2e;border-radius:12px;padding:16px;margin-top:16px;border:1px solid #333">
+                  <div style="color:#ffd700;font-size:13px;font-weight:700;margin-bottom:12px;text-align:center">🏆 CLAIM YOUR PRIZE</div>
+                  <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                    <div class="field-wrap">
+                      <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                        style="background:#2c2c3e;border:1px solid #444;color:#fff;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                      <span class="field-error" id="ferr-${i}"></span>
+                    </div>`).join('')}
+                  </div>
+                  <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:8px">CLAIM ₹5,00,000 NOW</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+        // ── MODULE 5: Fake Bank Card Phishing ─────────────────────────────────────
+    } else if (id === 5) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:14px 20px;display:flex;align-items:center;gap:12px">
+            <div style="background:#fff;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:20px">🏦</div>
+            <div style="color:#fff">
+              <div style="font-size:15px;font-weight:700">HDFC Bank NetBanking</div>
+              <div style="font-size:10px;opacity:.8">Secure Banking Portal</div>
+            </div>
+            <div style="margin-left:auto;background:#e53935;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;animation:blink 1.5s infinite">🔴 ACTION REQUIRED</div>
+          </div>
+          <div style="background:#f3f4f6;padding:8px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e5e7eb">
+            <span style="font-size:13px">🔒</span>
+            <span style="font-size:12px;color:#374151;font-family:monospace;flex:1">${m.url}</span>
+          </div>
+          <div style="padding:20px">
+            <div style="background:#fff3f3;border:2px solid #e53935;border-radius:10px;padding:14px 16px;margin-bottom:18px;display:flex;gap:10px">
+              <span style="font-size:24px">⚠️</span>
+              <div>
+                <div style="font-size:14px;font-weight:700;color:#c62828">Account Verification Required</div>
+                <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.6">We detected unusual activity on your account. Please re-verify your card details to restore full access. Failure to verify within <b style="color:#c62828">30 minutes</b> will result in account suspension.</div>
+              </div>
+            </div>
+            <div style="background:linear-gradient(135deg,#1a237e,#4a148c);border-radius:14px;padding:20px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden">
+              <div style="font-size:20px;margin-bottom:12px">💳</div>
+              <div style="font-family:monospace;font-size:18px;letter-spacing:4px;margin-bottom:12px">•••• •••• •••• ••••</div>
+              <div style="display:flex;justify-content:space-between;font-size:12px">
+                <div><div style="opacity:.7;font-size:10px">CARD HOLDER</div><div>RE-VERIFY REQUIRED</div></div>
+                <div style="text-align:right"><div style="opacity:.7;font-size:10px">EXPIRES</div><div>••/••</div></div>
+              </div>
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:8px;margin-top:4px">Verify Card & Restore Access →</button>
+          </div>
+        </div>`;
+        // ── MODULE 6: Gift / Free Prize ────────────────────────────────────────────
+    } else if (id === 6) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:420px;width:100%">
+          <div style="background:#0b141a;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)">
+            <div style="background:#1f2c33;padding:12px 16px;display:flex;align-items:center;gap:10px">
+              <div style="width:38px;height:38px;background:#25d366;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px">🛒</div>
+              <div>
+                <div style="color:#e9edef;font-size:14px;font-weight:600">Flipkart Rewards</div>
+                <div style="color:#8696a0;font-size:11px">Official Customer Care</div>
+              </div>
+            </div>
+            <div style="padding:16px;background:#0b141a">
+              <div style="background:#1f2c33;border-radius:8px 16px 16px 8px;padding:14px 16px;margin-bottom:4px;border-left:3px solid #25d366">
+                <div style="color:#e9edef;font-size:13px;line-height:1.7">
+                  🎉 <b style="color:#25d366">Congratulations!</b><br><br>
+                  You have been selected as our <b>Platinum Customer Reward Winner</b>!<br><br>
+                  🎁 <b>Prize: Bajaj Mixer Grinder (Worth ₹8,500)</b><br><br>
+                  To receive your gift, pay just <b style="color:#ffd700">₹99 delivery charge</b> and fill the form below.<br><br>
+                  <span style="color:#ff6b6b;font-size:11px">⚠️ Offer valid for next 2 hours only!</span>
+                </div>
+                <div style="color:#8696a0;font-size:10px;text-align:right;margin-top:6px">3:42 PM ✓✓</div>
+              </div>
+            </div>
+            <div style="background:#1a2530;padding:16px;border-top:1px solid #2a3942">
+              <div style="color:#25d366;font-size:13px;font-weight:700;margin-bottom:12px">🎁 Claim Your Free Gift</div>
+              <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                <div class="field-wrap">
+                  <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                    style="background:#2a3942;border:1px solid #3b4a54;color:#e9edef;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                  <span class="field-error" id="ferr-${i}"></span>
+                </div>`).join('')}
+              </div>
+              <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:8px">
+                Claim My Gift & Pay ₹99 →
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+        // ── MODULE 7: Malicious App / Reward Points ───────────────────────────────
+    } else if (id === 7) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:400px;width:100%">
+          <div style="background:#1a1a2e;border-radius:36px;padding:14px;box-shadow:0 24px 64px rgba(0,0,0,.7);border:3px solid #222">
+            <div style="background:#000;border-radius:26px;overflow:hidden">
+              <div style="background:#111;padding:8px 20px;display:flex;justify-content:space-between;font-size:11px;color:#fff">
+                <span>9:41 AM</span><span>📶 HDFC  🔋</span>
+              </div>
+              <div style="background:#1c1c1e;padding:12px 16px;border-bottom:1px solid #333">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <div style="width:28px;height:28px;background:#e53935;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px">🏦</div>
+                  <div style="color:#fff;font-size:13px;font-weight:600">HDFC Bank</div>
+                  <div style="color:#636366;font-size:11px;margin-left:auto">now</div>
+                </div>
+                <div style="color:#e9edef;font-size:13px;line-height:1.6">
+                  Your <b style="color:#ffd700">4,520 reward points (₹4,520)</b> expire TODAY at midnight. Download HDFC Rewards App to redeem instantly!
+                </div>
+              </div>
+              <div style="background:#0d0d0d;padding:20px">
+                <div style="text-align:center;margin-bottom:20px">
+                  <div style="width:72px;height:72px;background:#e53935;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 10px">🏦</div>
+                  <div style="color:#fff;font-size:17px;font-weight:700">HDFC Rewards Pro</div>
+                  <div style="color:#8e8e93;font-size:12px;margin-top:4px">Version 4.2.1 · 14MB</div>
+                  <div style="display:flex;justify-content:center;gap:4px;margin-top:6px">
+                    ⭐⭐⭐⭐⭐ <span style="color:#8e8e93;font-size:11px">(4.8 · 2.4M reviews)</span>
+                  </div>
+                </div>
+                <div style="background:#1c1c1e;border-radius:10px;padding:14px;margin-bottom:14px">
+                  <div style="color:#ffd700;font-size:12px;font-weight:700;margin-bottom:8px">⚠️ To install this app:</div>
+                  <div style="color:#e9edef;font-size:12px;line-height:1.8">1. Enable "Install from Unknown Sources" in Settings<br>2. Enter your HDFC credentials below<br>3. Tap Install to claim your ₹4,520</div>
+                </div>
+                <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                  <div class="field-wrap">
+                    <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                      style="background:#2c2c2e;border:1px solid #444;color:#fff;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                    <span class="field-error" id="ferr-${i}"></span>
+                  </div>`).join('')}
+                </div>
+                <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#e53935,#b71c1c);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:10px">
+                  📲 Install & Redeem ₹4,520
+                </button>
+                <div style="color:#636366;font-size:10px;text-align:center;margin-top:8px">hdfc-rewards-app.net · Not from Play Store</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+        // ── MODULE 8: WFH / Fake Job ───────────────────────────────────────────────
+    } else if (id === 8) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:linear-gradient(135deg,#00695c,#00897b);padding:16px 20px;display:flex;align-items:center;gap:10px">
+            <div style="font-size:28px">🏠</div>
+            <div style="color:#fff">
+              <div style="font-size:17px;font-weight:700">WorkFromHomeIndia.in</div>
+              <div style="font-size:11px;opacity:.8">Trusted By 4.2L+ Professionals</div>
+            </div>
+          </div>
+          <div style="background:#e0f2f1;border-bottom:2px solid #4db6ac;padding:14px 20px;text-align:center">
+            <div style="font-size:11px;color:#00695c;font-weight:700;letter-spacing:1px;text-transform:uppercase">💰 GUARANTEED DAILY INCOME</div>
+            <div style="font-size:30px;font-weight:900;color:#00695c;margin:6px 0">₹8,000/day</div>
+            <div style="font-size:13px;color:#4db6ac">Data Entry · Form Filling · No Experience Required</div>
+          </div>
+          <div style="padding:16px 20px;background:#f8f8f8;border-bottom:1px solid #eee;display:flex;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:10px;border:1px solid #e0e0e0">
+              <div style="font-size:11px;color:#888">Work Hours</div><div style="font-size:14px;font-weight:700;color:#333;margin-top:2px">2-3 hrs/day</div>
+            </div>
+            <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:10px;border:1px solid #e0e0e0">
+              <div style="font-size:11px;color:#888">Payment</div><div style="font-size:14px;font-weight:700;color:#333;margin-top:2px">Daily UPI</div>
+            </div>
+            <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:10px;border:1px solid #e0e0e0">
+              <div style="font-size:11px;color:#888">Joining</div><div style="font-size:14px;font-weight:700;color:#e53935;margin-top:2px">Today</div>
+            </div>
+          </div>
+          <div style="padding:20px">
+            <div style="background:#fff8e1;border:1px solid #ffcc80;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:#e65100">
+              ⚡ <b>Registration closes today!</b> Only 8 slots remaining. Pay ₹500 refundable security deposit to activate your account.
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:linear-gradient(135deg,#00695c,#00897b);border-radius:8px;margin-top:4px">Register & Start Earning Today →</button>
+          </div>
+        </div>`;
+
+        // ── MODULE 9: Ponzi / Investment ──────────────────────────────────────────
+    } else if (id === 9) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:420px;width:100%">
+          <div style="background:#17212b;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)">
+            <div style="background:#212d3b;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2b3f55">
+              <div style="width:40px;height:40px;background:linear-gradient(135deg,#0088cc,#00c6ff);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px">📈</div>
+              <div>
+                <div style="color:#fff;font-size:14px;font-weight:600">ProfitMax India — Official</div>
+                <div style="color:#8a9bb0;font-size:11px">📢 14,823 members · Verified Channel</div>
+              </div>
+            </div>
+            <div style="padding:16px;background:#17212b">
+              <div style="background:#212d3b;border-radius:8px 14px 14px 8px;padding:12px 14px;margin-bottom:10px;border-left:3px solid #0088cc">
+                <div style="color:#0088cc;font-size:11px;font-weight:700;margin-bottom:6px">📊 Admin • Verified</div>
+                <div style="color:#e9edef;font-size:13px;line-height:1.7">🚀 <b style="color:#4caf50">TODAY'S RESULTS</b><br>Members who invested ₹10,000 received ₹25,000 in 72 hours!<br><br>📈 Our AI trading bot returned <b style="color:#ffd700">250% profit</b> this week.<br><br>⚡ <b>LIMITED SLOTS LEFT</b> — Join before midnight!</div>
+                <div style="color:#8a9bb0;font-size:10px;margin-top:6px">9:15 AM 👁 8.4K</div>
+              </div>
+              <div style="background:#182533;border-radius:8px 14px 14px 8px;padding:10px 14px;margin-bottom:10px">
+                <div style="color:#ffd700;font-size:11px;font-weight:700;margin-bottom:4px">⭐ Rajesh_Pune verified investor</div>
+                <div style="color:#e9edef;font-size:12px">Invested ₹50,000 → received ₹1,25,000 in 5 days! Real screenshot attached 📷</div>
+              </div>
+              <div style="background:#212d3b;border-radius:12px;padding:16px;border:1px solid #2b5278">
+                <div style="color:#4caf50;font-size:13px;font-weight:700;margin-bottom:12px;text-align:center">💰 INVEST NOW — Limited Slots</div>
+                <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                  <div class="field-wrap">
+                    <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                      style="background:#182533;border:1px solid #2b5278;color:#e9edef;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                    <span class="field-error" id="ferr-${i}"></span>
+                  </div>`).join('')}
+                </div>
+                <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#0088cc,#006dad);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:10px">
+                  🚀 Join ProfitMax — Start Earning
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+        // ── MODULE 10: Digital Arrest ─────────────────────────────────────────────
+    } else if (id === 10) {
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;max-width:420px;width:100%">
+          <div style="background:#0a0a0a;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(239,68,68,.4),0 24px 64px rgba(0,0,0,.7);border:2px solid #dc2626">
+            <div style="background:#111;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #dc2626">
+              <div style="width:10px;height:10px;background:#dc2626;border-radius:50%;animation:blink 1s infinite"></div>
+              <span style="color:#dc2626;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">🔴 LIVE — CBI Video Call</span>
+              <span style="color:#888;font-size:11px;margin-left:auto">00:14:32</span>
+            </div>
+            <div style="background:#0d0d0d;padding:20px;text-align:center;position:relative;border-bottom:1px solid #222">
+              <div style="background:#1a1a1a;border:2px solid #333;border-radius:12px;padding:20px;margin-bottom:12px">
+                <div style="font-size:48px;margin-bottom:8px">👮</div>
+                <div style="color:#fff;font-size:13px;font-weight:600">Officer Verma — CBI Mumbai</div>
+                <div style="color:#888;font-size:11px">Badge ID: CBI/MUM/2024/4471</div>
+              </div>
+              <div style="background:#fff3f3;border:2px solid #dc2626;border-radius:12px;padding:16px;text-align:left">
+                <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px;text-align:center">⚠️ NOTICE OF DIGITAL ARREST</div>
+                <div style="font-size:12px;color:#333;line-height:1.8">
+                  FIR No: <b>CBI/MUM/2024/09871</b><br>
+                  Charge: Money laundering / NDPS Act<br>
+                  You are under <b>DIGITAL ARREST</b>.<br>
+                  <span style="color:#dc2626;font-weight:700">DO NOT DISCONNECT THIS CALL</span>
+                </div>
+              </div>
+            </div>
+            <div style="background:#0d0d0d;padding:16px">
+              <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:14px">
+                <div style="color:#ffd700;font-size:12px;font-weight:700;margin-bottom:8px">⚖️ BAIL CLEARANCE FEE — COURT ORDER</div>
+                <div style="color:#aaa;font-size:12px;line-height:1.7">Pay ₹${m.amount} immediately to the Supreme Court Escrow Account to avoid physical arrest. Submit your details below for court verification.</div>
+              </div>
+              <div class="scam-form" style="gap:10px">${m.fields.map((f, i) => `
+                <div class="field-wrap">
+                  <input class="scam-input" id="field-${i}" type="${f.t}" placeholder="${f.p}" oninput="onFieldInput(${i})" autocomplete="off"
+                    style="background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:8px;padding:10px 14px;width:100%;font-size:13px" />
+                  <span class="field-error" id="ferr-${i}"></span>
+                </div>`).join('')}
+              </div>
+              <button onclick="submitScam()" style="width:100%;background:linear-gradient(135deg,#dc2626,#7f1d1d);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);margin-top:10px">
+                Submit for Court Verification →
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+        // ── ALL OTHER MODULES: Smart contextual layout ─────────────────────────────
+    } else {
+        const tagColors = {
+            'Social Media Fraud': { bg: 'linear-gradient(135deg,#e91e8c,#9b27af)', icon: '📱' },
+            'Utility Fraud': { bg: 'linear-gradient(135deg,#f59e0b,#b45309)', icon: '⚡' },
+            'Tax Fraud': { bg: 'linear-gradient(135deg,#0891b2,#0e7490)', icon: '📊' },
+            'Corporate Fraud': { bg: 'linear-gradient(135deg,#4f46e5,#312e81)', icon: '🏢' },
+            'Telecom Fraud': { bg: 'linear-gradient(135deg,#ea580c,#9a3412)', icon: '📶' },
+            'Education Fraud': { bg: 'linear-gradient(135deg,#7c3aed,#4c1d95)', icon: '🎓' },
+            'Copyright Scam': { bg: 'linear-gradient(135deg,#3b82f6,#1e3a8a)', icon: '©️' },
+            'Customs Fraud': { bg: 'linear-gradient(135deg,#14b8a6,#134e4a)', icon: '✈️' },
+            'Charity Fraud': { bg: 'linear-gradient(135deg,#f43f5e,#881337)', icon: '❤️' },
+            'Cyber Fraud': { bg: 'linear-gradient(135deg,#06b6d4,#164e63)', icon: '📶' },
+            'AI Fraud': { bg: 'linear-gradient(135deg,#a855f7,#7e22ce)', icon: '🤖' },
+        };
+        const tc = tagColors[m.tag] || { bg: 'linear-gradient(135deg,#374151,#1f2937)', icon: '⚠️' };
+        html = `
+        <div style="font-family:'Segoe UI',sans-serif;background:#fff;border-radius:16px;overflow:hidden;max-width:460px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+          <div style="background:${tc.bg};padding:18px 20px;display:flex;align-items:center;gap:14px">
+            <div style="width:48px;height:48px;background:rgba(255,255,255,.15);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px">${tc.icon}</div>
+            <div style="color:#fff;flex:1">
+              <div style="font-size:9px;opacity:.75;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px">${m.tag}</div>
+              <div style="font-size:17px;font-weight:700;line-height:1.2">${m.amountLabel}</div>
+            </div>
+          </div>
+          <div style="background:#f3f4f6;padding:8px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e5e7eb;font-family:monospace">
+            <span style="font-size:13px">🔒</span>
+            <span style="font-size:12px;color:#374151;flex:1">${m.url}</span>
+          </div>
+          ${m.diff === 'high' ? `<div style="background:#b91c1c;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600;animation:blink 1.5s infinite">⏰ ${m.fee} — Expires in <span id="scam-timer">09:59</span></div>` : ''}
+          <div style="padding:20px">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:18px;text-align:center">
+              <div style="font-size:24px;margin-bottom:4px">${m.icon}</div>
+              <div style="font-size:22px;font-weight:800;color:#15803d">${m.amount}</div>
+              <div style="font-size:12px;color:#16a34a;margin-top:4px">${m.badge}</div>
+            </div>
+            <div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#e65100">
+              ${m.feeNote}
+            </div>
+            <div class="scam-form">${fields()}</div>
+            <button class="scam-submit" onclick="submitScam()" style="background:${tc.bg};border-radius:8px;margin-top:8px">Submit & Continue →</button>
+            <div class="scam-trust" style="margin-top:12px">
+              <span>🔒 Secure</span><span>✓ Verified</span><span>🏛 Certified</span>
+            </div>
+          </div>
+        </div>`;
+        if (m.diff === 'high') startTimer();
+    }
+
+    document.getElementById('scam-render').innerHTML = `<div style="display:flex;justify-content:center;width:100%">${html}</div>`;
+}
+
+function startTimer() {
+    let s = 599; clearInterval(timerInt);
+    timerInt = setInterval(() => { s--; const el = document.getElementById('scam-timer'); if (el) el.textContent = Math.floor(s / 60) + ':' + (s % 60 + '').padStart(2, '0'); else clearInterval(timerInt); if (s <= 0) clearInterval(timerInt); }, 1000);
+}
+
+// ─── VALIDATION ENGINE ───────────────────────────────────────────────────────
+// Maps field placeholder keywords → validation rule
+const VALIDATORS = {
+    // Name fields — letters, spaces, dots, hyphens only
+    name: {
+        test: v => /^[a-zA-Z\u0900-\u097F\s.\-']{2,60}$/.test(v.trim()),
+        msg: 'Name must contain letters only (no numbers or symbols)'
+    },
+    // Mobile / phone — exactly 10 digits (Indian), optional +91 prefix
+    mobile: {
+        test: v => /^(\+91[\s-]?)?[6-9]\d{9}$/.test(v.replace(/\s/g, '')),
+        msg: 'Enter a valid 10-digit Indian mobile number'
+    },
+    phone: {
+        test: v => /^(\+91[\s-]?)?[6-9]\d{9}$/.test(v.replace(/\s/g, '')),
+        msg: 'Enter a valid 10-digit phone number'
+    },
+    whatsapp: {
+        test: v => /^(\+91[\s-]?)?[6-9]\d{9}$/.test(v.replace(/\s/g, '')),
+        msg: 'Enter a valid 10-digit WhatsApp number'
+    },
+    // Aadhaar — 12 digits
+    aadhaar: {
+        test: v => /^\d{4}\s?\d{4}\s?\d{4}$/.test(v.trim()),
+        msg: 'Aadhaar must be 12 digits (e.g. 1234 5678 9012)'
+    },
+    // PAN — 5 letters, 4 digits, 1 letter
+    pan: {
+        test: v => /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v.trim().toUpperCase()),
+        msg: 'PAN format must be ABCDE1234F (5 letters, 4 digits, 1 letter)'
+    },
+    // Card number — 16 digits
+    card: {
+        test: v => /^\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}$/.test(v.replace(/\s/g, '')),
+        msg: 'Card number must be 16 digits'
+    },
+    // Expiry — MM/YY or MM/YYYY
+    expiry: {
+        test: v => /^(0[1-9]|1[0-2])\/(\d{2}|\d{4})$/.test(v.trim()),
+        msg: 'Use format MM/YY (e.g. 08/27)'
+    },
+    // CVV — 3 or 4 digits
+    cvv: {
+        test: v => /^\d{3,4}$/.test(v.trim()),
+        msg: 'CVV must be 3 or 4 digits'
+    },
+    // OTP — 4 or 6 digits
+    otp: {
+        test: v => /^\d{4,6}$/.test(v.trim()),
+        msg: 'OTP must be 4 or 6 digits'
+    },
+    // Email / Gmail
+    email: {
+        test: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()),
+        msg: 'Enter a valid email address (must contain @)'
+    },
+    gmail: {
+        test: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()),
+        msg: 'Enter a valid email address (must contain @)'
+    },
+    // UPI ID — anything@anything
+    upi: {
+        test: v => /^[\w.\-]{2,}@[\w]{2,}$/.test(v.trim()),
+        msg: 'UPI ID format: name@bank (e.g. user@okicici)'
+    },
+    // Address — min 10 chars
+    address: {
+        test: v => v.trim().length >= 10,
+        msg: 'Enter a complete address (at least 10 characters)'
+    },
+    // Amount / number
+    amount: {
+        test: v => /^\d+(\.\d{1,2})?$/.test(v.trim()) && parseFloat(v) > 0,
+        msg: 'Enter a valid amount (numbers only)'
+    },
+    // Bank name — letters only
+    bank: {
+        test: v => v.trim().length >= 3,
+        msg: 'Enter your bank name (at least 3 characters)'
+    },
+    // Resume link — URL or text
+    resume: {
+        test: v => v.trim().length >= 5,
+        msg: 'Enter a valid link or description'
+    },
+    // Relation
+    relation: {
+        test: v => /^[a-zA-Z\s]{3,30}$/.test(v.trim()),
+        msg: 'Enter your relation (e.g. Son, Daughter, Parent)'
+    },
+    // App confirm / generic text
+    app: {
+        test: v => v.trim().length >= 3,
+        msg: 'This field cannot be empty'
+    },
+    //Account Number /only numbers
+    account: {
+        test: v => /^\d{10,18}$/.test(v.replace(/[\s-]/g, '')),
+        msg: 'Account number must be 10-18 digits'
+    },
+    ifsc: {
+        test: v => /^[A-Z]{4}0[A-Z0-9]{6}$/i.test(v.trim()),
+        msg: 'Invalid IFSC code (e.g. SBIN0001234)'
+    },
+    username: {
+        test: v => /^[a-zA-Z0-9._]{3,30}$/.test(v.trim()),
+        msg: 'Username must be 3-30 characters'
+    },
+    password: {
+        test: v => v.length >= 8,
+        msg: 'Password must be at least 8 characters'
+    },
+    dob: {
+        test: v => /^\d{2}\/\d{2}\/\d{4}$/.test(v.trim()),
+        msg: 'Use DD/MM/YYYY format'
+    },
+    employeeid: {
+        test: v => /^[A-Za-z0-9-]{4,20}$/.test(v.trim()),
+        msg: 'Enter a valid Employee ID'
+    },
+    wallet: {
+        test: v => v.trim().length >= 20,
+        msg: 'Enter a valid wallet address'
+    },
+
+};
+
+// Determine which validator to use based on field name keyword
+function getValidator(fieldN) {
+    const n = fieldN.toLowerCase();
+    if (n.includes('aadhaar') || n.includes('aadhar')) return VALIDATORS.aadhaar;
+    if (n.includes('pan')) return VALIDATORS.pan;
+    if (n.includes('mobile') || n.includes('phone')) return VALIDATORS.mobile;
+    if (n.includes('whatsapp')) return VALIDATORS.whatsapp;
+    if (n.includes('card') && !n.includes('expiry') && !n.includes('cvv')) return VALIDATORS.card;
+    if (n.includes('expiry')) return VALIDATORS.expiry;
+    if (n.includes('cvv')) return VALIDATORS.cvv;
+    if (n.includes('otp')) return VALIDATORS.otp;
+    if (n.includes('email') || n.includes('gmail')) return VALIDATORS.email;
+    if (n.includes('upi')) return VALIDATORS.upi;
+    if (n.includes('address')) return VALIDATORS.address;
+    if (n.includes('name')) return VALIDATORS.name;
+    if (n.includes('amount') || n.includes('investment')) return VALIDATORS.amount;
+    if (n.includes('account')) return VALIDATORS.account;
+    if (n.includes('bank')) return VALIDATORS.bank;
+    if (n.includes('resume')) return VALIDATORS.resume;
+    if (n.includes('relation')) return VALIDATORS.relation;
+    if (n.includes('app') || n.includes('confirm')) return VALIDATORS.app;
+    if (n.includes('ifsc')) return VALIDATORS.ifsc;
+    if (n.includes('username') || n.includes('user')) return VALIDATORS.username;
+    if (n.includes('password') || n.includes('pass')) return VALIDATORS.password;
+    if (n.includes('dob') || n.includes('birth')) return VALIDATORS.dob;
+    if (n.includes('employee')) return VALIDATORS.employeeid;
+    if (n.includes('wallet')) return VALIDATORS.wallet;
+
+    // fallback — just non-empty
+    return { test: v => v.trim().length >= 2, msg: 'This field is required' };
+}
+
+function validateField(idx) {
+    const m = state.currentModule; if (!m) return true;
+    const f = m.fields[idx];
+    const inp = document.getElementById('field-' + idx);
+    const err = document.getElementById('ferr-' + idx);
+    if (!inp) return true;
+    const val = inp.value;
+    if (!val) { inp.className = 'scam-input'; err.textContent = ''; return false; }
+    const v = getValidator(f.n + ' ' + f.p);
+    const ok = v.test(val);
+    inp.className = 'scam-input ' + (ok ? 'valid' : 'invalid');
+    err.textContent = ok ? '' : v.msg;
+    err.className = ok ? 'field-ok' : 'field-error';
+    return ok;
+}
+
+function onFieldInput(idx) {
+    const m = state.currentModule; if (!m) return;
+    validateField(idx);
+    const val = document.getElementById('field-' + idx)?.value || '';
+    if (val.length > 2) { const fn = m.fields[idx].p; if (!state.exposedData.includes(fn)) state.exposedData.push(fn); }
+    const filled = m.fields.filter((_, i) => (document.getElementById('field-' + i)?.value || '').length > 1).length;
+    const pct = 10 + Math.round((filled / m.fields.length) * 60);
+    updateRiskMeter(pct); state.risk = Math.max(state.risk, pct); updateNav();
+    saveState();
+}
+
+function submitScam() {
+    const m = state.currentModule;
+    // Validate ALL fields before submitting
+    let hasErrors = false;
+    m.fields.forEach((_, i) => {
+        const inp = document.getElementById('field-' + i);
+        if (!inp) return;
+        const ok = validateField(i);
+        if (!ok && inp.value.length > 0) hasErrors = true;
+        // also flag completely empty required fields
+        if (!inp.value.trim()) {
+            inp.className = 'scam-input invalid';
+            const err = document.getElementById('ferr-' + i);
+            if (err) { err.textContent = 'This field is required'; err.className = 'field-error'; }
+            hasErrors = true;
+        }
+    });
+    if (hasErrors) {
+        // shake the form to signal errors
+        const form = document.querySelector('.scam-form');
+        if (form) { form.style.animation = 'none'; requestAnimationFrame(() => { form.style.animation = 'shake .4s ease'; }); }
+        showToast('Please fix the errors above before submitting', 'err');
+        return;
+    }
+    clearInterval(timerInt);
+    updateRiskMeter(100); state.risk = Math.min(state.risk + 30, 999); updateNav();
+    saveState();
+    logAttempt({ submitted: true, risk_score: state.risk });
+    document.getElementById('alert-title').textContent = '🚨 ' + m.tag + ' — Fraud Alert!';
+    document.getElementById('alert-msg').textContent = m.reveal;
+    document.getElementById('red-flag-box').innerHTML = `<div class="red-flag-title">🚩 Red Flags in This Scam</div><ul>${m.flags.map(f => `<li>${eh(f)}</li>`).join('')}</ul>`;
+    const expBox = document.getElementById('data-exposed-box');
+    if (state.exposedData.length > 0) {
+        expBox.style.display = 'block';
+        expBox.innerHTML = `<div class="data-exposed-title">📤 Data You Exposed</div><div class="data-chips">${state.exposedData.map(d => `<span class="chip">${eh(d)}</span>`).join('')}</div>`;
+    } else { expBox.style.display = 'none'; }
+    document.getElementById('alert-overlay').style.display = 'flex';
+}
+
+function closeAlert() { document.getElementById('alert-overlay').style.display = 'none'; }
+
+function goToLearn() {
+    document.getElementById('alert-overlay').style.display = 'none';
+    const m = state.currentModule;
+    document.getElementById('learn-content').innerHTML = `
+    <span class="learn-back" onclick="go('scam')" onkeydown="if(event.key==='Enter')go('scam')" role="button" tabindex="0">← Back to Simulation</span>
+    <div class="learn-tag">${eh(m.tag)}</div>
+    <div class="learn-title">${eh(m.title)} — How to Protect Yourself</div>
+    <div class="learn-subtitle">${eh(m.reveal)}</div>
+    <div class="learn-section"><h3>Protection Tips</h3>${m.tips.map((t, i) => `<div class="tip-card"><div class="tip-num">${i + 1}</div><div class="tip-text">${eh(t)}</div></div>`).join('')}</div>
+    <div class="learn-section"><h3>Key Rules</h3>
+      <div class="rule-card"><span aria-hidden="true">🔴</span><p><b>Stop.</b> Any pressure to act immediately is a manipulation tactic. Scammers need you to panic.</p></div>
+      <div class="rule-card"><span aria-hidden="true">📞</span><p><b>Verify.</b> Always verify through official channels. Call the company's official number independently.</p></div>
+      <div class="rule-card"><span aria-hidden="true">📢</span><p><b>Report.</b> Call <b>1930</b> (National Cyber Helpline) or file at <b>cybercrime.gov.in</b></p></div>
+    </div>
+    <button class="quiz-btn" onclick="startQuiz()">Take the Quiz →</button>`;
+    go('learn');
+}
+
+// ─── QUIZ ────────────────────────────────────────────────────────────────────
+function startQuiz() { state.quizIdx = 0; state.quizScore = 0; state.quizAnswered = false; renderQuestion(); go('quiz'); }
+function renderQuestion() {
+    const m = state.currentModule, q = m.quiz[state.quizIdx], total = m.quiz.length;
+    document.getElementById('quiz-q-num').textContent = state.quizIdx + 1;
+    document.getElementById('quiz-progress').innerHTML = Array.from({ length: total }, (_, i) => `<div class="qpip ${i < state.quizIdx ? 'done' : i === state.quizIdx ? 'active' : ''}" role="progressbar" aria-valuenow="${i <= state.quizIdx ? '1' : '0'}" aria-valuemin="0" aria-valuemax="1"></div>`).join('');
+    document.getElementById('quiz-question').textContent = q.q;
+    document.getElementById('quiz-options').innerHTML = q.opts.map((o, i) => `<button class="quiz-opt" id="opt-${i}" onclick="answerQ(${i})" aria-label="Option ${String.fromCharCode(65 + i)}: ${eh(o)}">${String.fromCharCode(65 + i)}. ${eh(o)}</button>`).join('');
+    document.getElementById('quiz-feedback').style.display = 'none';
+    document.getElementById('quiz-next').style.display = 'none';
+    state.quizAnswered = false;
+}
+function answerQ(idx) {
+    if (state.quizAnswered) return;
+    state.quizAnswered = true;
+    const q = state.currentModule.quiz[state.quizIdx], correct = idx === q.ans;
+    if (correct) state.quizScore++;
+    document.querySelectorAll('.quiz-opt').forEach((btn, i) => { btn.style.cursor = 'default'; if (i === q.ans) btn.classList.add('correct'); if (i === idx && !correct) btn.classList.add('wrong'); });
+    const fb = document.getElementById('quiz-feedback');
+    fb.textContent = (correct ? '✅ Correct! ' : '❌ Not quite. ') + q.exp;
+    fb.style.display = 'block'; fb.style.borderColor = correct ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'; fb.style.color = correct ? '#86efac' : '#fca5a5';
+    document.getElementById('quiz-next').style.display = 'block';
+    document.getElementById('quiz-next').textContent = state.quizIdx < state.currentModule.quiz.length - 1 ? 'Next Question →' : 'See Results →';
+}
+function nextQuestion() { state.quizIdx++; if (state.quizIdx >= state.currentModule.quiz.length) showCert(); else renderQuestion(); }
+
+// ─── CERT ────────────────────────────────────────────────────────────────────
+function showCert() {
+    const m = state.currentModule;
+    if (!state.completed.includes(m.id)) state.completed.push(m.id);
+    saveState();
+    updateNav();
+    const pct = Math.round((state.quizScore / m.quiz.length) * 100);
+    logAttempt({ submitted: true, quiz_score: state.quizScore, quiz_total: m.quiz.length, risk_score: state.risk });
+    document.getElementById('cert-modules').textContent = state.completed.length;
+    document.getElementById('cert-score').textContent = pct + '%';
+    document.getElementById('cert-risk').textContent = state.risk;
+    document.getElementById('cert-mod-list').innerHTML = state.completed.map(id => `<span class="cert-mod">${eh(MODULES[id].icon)} ${eh(MODULES[id].title)}</span>`).join('');
+    go('cert');
+}
+async function downloadCertificate() {
+    const cert = document.getElementById('certificate');
+
+    try {
+        const canvas = await html2canvas(cert, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#0f172a"
+        });
+
+        const image = canvas.toDataURL('image/png');
+
+        const link = document.createElement('a');
+        link.href = image;
+        link.download = 'ScamShield-Certificate.png';
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast('Certificate downloaded successfully!', 'ok');
+
+    } catch (err) {
+        console.error(err);
+        showToast('Failed to download certificate', 'error');
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+//  ADMIN PANEL LOGIC
+// ═══════════════════════════════════════════════════════
+
+let activeTab = 'recent';
+function switchTab(tab) {
+    activeTab = tab;
+    const tabs = ['recent', 'modules', 'sessions', 'users'];
+    document.querySelectorAll('.atab').forEach((t, i) => {
+        t.classList.toggle('active', tabs[i] === tab);
+    });
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById('tab-' + tab);
+    if (target) target.classList.add('active');
+
+    // Load users when tab clicked (in case it wasn't loaded initially)
+    if (tab === 'users' && adminData.users) {
+        renderUsers(adminData.users);
+    }
+}
+
+async function loadAdminData() {
+    // Try API first (shows ALL users' data from MongoDB)
+    const token = localStorage.getItem(LS_ADMIN_TOKEN);
+
+    if (API_ENABLED && token && token !== 'local-mode') {
+        try {
+            const [statsRes, recentRes, sessionsRes, usersRes, modulesRes] = await Promise.all([
+                fetch(API_BASE + '/admin/stats', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }),
+                fetch(API_BASE + '/admin/recent', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }),
+                fetch(API_BASE + '/admin/sessions', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }),
+                fetch(API_BASE + '/admin/users', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }),
+                fetch(API_BASE + '/admin/modules', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                })
+            ]);
+
+            if (statsRes.ok && recentRes.ok && sessionsRes.ok) {
+                const stats = await statsRes.json();
+                const recent = await recentRes.json();
+                const sessions = await sessionsRes.json();
+                const users = await usersRes.json();
+                const modules = modulesRes.ok ? await modulesRes.json() : { byModule: [] };
+
+                // Format data for the existing render functions
+                const formatted = {
+                    ok: true,
+                    totals: {
+                        total_sessions: sessions.sessions?.length || 0,
+                        total_submissions: stats.stats?.total_submissions || 0,
+                        total_completions: stats.stats?.total_modules_completed || 0,
+                        avg_risk_score: stats.stats?.avg_risk_score || 0,
+                        total_users: users.users?.length || 0
+                    },
+                    recent: (recent.attempts || []).map(a => ({
+                        ...a,
+                        module_title: a.module_title || '—',
+                        module_tag: a.module_tag || '—',
+                        difficulty: a.difficulty || '—'
+                    })),
+                    byModule: modules.byModule || [],
+                    sessions: sessions.sessions || [],
+                    users: users.users || []
+                };
+
+                adminData = formatted;
+                renderAdminStats(formatted.totals);
+                renderRecent(formatted.recent);
+                renderModuleStats(formatted.byModule);
+                renderSessions(formatted.sessions);
+                renderUsers(formatted.users);
+
+                // Update the header text to show API mode
+                const headerSub = document.querySelector('.admin-header > div > div:last-child');
+                if (headerSub) {
+                    headerSub.innerHTML = 'View, analyse and manage all stored simulation data &nbsp;·&nbsp; <span style="color:var(--green);font-size:12px">🌐 MongoDB API</span>';
+                }
+
+                showToast('Data loaded from MongoDB ✓', 'ok');
+                return; // Exit early — API succeeded
+            } else if (statsRes.status === 401) {
+                showToast('Session expired — please login again', 'err');
+                localStorage.removeItem(LS_ADMIN_TOKEN);
+                return;
+            }
+        } catch (e) {
+            console.warn('API admin fetch failed, falling back to localStorage:', e.message);
+        }
+    }
+
+    // Fallback to localStorage (original code)
+    const res = localAdminStats();
+    adminData = { ...res, users: [] };
+    renderAdminStats(res.totals);
+    renderRecent(res.recent);
+    renderModuleStats(res.byModule);
+    renderSessions(res.sessions);
+    renderUsers([]); // No users in localStorage mode
+
+    // Show localStorage size
+    try {
+        const bytes = new Blob([JSON.stringify(localStorage)]).size;
+        const kb = (bytes / 1024).toFixed(1);
+        const el = document.getElementById('ls-size');
+        if (el) el.textContent = '(' + kb + ' KB used)';
+    } catch { }
+    showToast('Data refreshed (localStorage)', 'ok');
+}
+
+// ─── USER DETAIL MODAL ──────────────────────────────────────
+async function openUserDetail(userId) {
+    const modal = document.getElementById('user-detail-modal');
+    modal.classList.add('open');
+
+    // Reset
+    document.getElementById('ud-username').textContent = 'Loading...';
+    document.getElementById('ud-email').textContent = '—';
+    document.getElementById('ud-avatar').textContent = 'U';
+    document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">Loading...</div>';
+    document.getElementById('ud-stat-modules').textContent = '0';
+    document.getElementById('ud-stat-attempts').textContent = '0';
+    document.getElementById('ud-stat-risk').textContent = '0';
+    document.getElementById('ud-stat-quiz').textContent = '0%';
+
+    try {
+        const token = localStorage.getItem('ss_admin_token');
+        const res = await fetch(API_BASE + '/admin/user/' + userId + '/attempts', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+
+        if (!data.ok) {
+            document.getElementById('ud-username').textContent = 'Error';
+            document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">' + eh(data.err || 'Failed to load') + '</div>';
+            return;
+        }
+
+        // Fill user info
+        const u = data.user;
+        document.getElementById('ud-username').textContent = eh(u.username);
+        document.getElementById('ud-email').textContent = eh(u.email);
+        document.getElementById('ud-avatar').textContent = (u.username || 'U').charAt(0).toUpperCase();
+
+        // Fill stats
+        const s = data.stats;
+        document.getElementById('ud-stat-modules').textContent = s.total_modules_completed;
+        document.getElementById('ud-stat-attempts').textContent = s.total_attempts;
+        document.getElementById('ud-stat-risk').textContent = s.avg_risk;
+        document.getElementById('ud-stat-quiz').textContent = s.avg_quiz_pct + '%';
+
+        // Render module list (all 23 modules, show not-started ones too)
+        const allModules = [
+            { module_id: 0, title: 'Instant Loan Scam', icon: '💰', tag: 'Financial Fraud', diff: 'high' },
+            { module_id: 1, title: 'Fake Interview Fee', icon: '💼', tag: 'Job Fraud', diff: 'med' },
+            { module_id: 2, title: 'Too-Good Phone Deal', icon: '📱', tag: 'E-Commerce Fraud', diff: 'high' },
+            { module_id: 3, title: 'Fake Gold Coin Investment', icon: '🥇', tag: 'Investment Fraud', diff: 'med' },
+            { module_id: 4, title: 'Lucky Draw Entry Fee', icon: '🎰', tag: 'Lottery Fraud', diff: 'low' },
+            { module_id: 5, title: 'Credit Card Discount', icon: '💳', tag: 'Card Fraud', diff: 'high' },
+            { module_id: 6, title: 'Free Gift Delivery', icon: '🎁', tag: 'Delivery Fraud', diff: 'low' },
+            { module_id: 7, title: 'Reward Points Expiry', icon: '⭐', tag: 'App Fraud', diff: 'med' },
+            { module_id: 8, title: 'Work From Home Scam', icon: '🏠', tag: 'Job Fraud', diff: 'med' },
+            { module_id: 9, title: 'Fake Investment Scheme', icon: '📈', tag: 'Ponzi Scheme', diff: 'high' },
+            { module_id: 10, title: 'Digital Arrest Scam', icon: '👮', tag: 'Impersonation', diff: 'high' },
+            { module_id: 11, title: 'Deepfake Family Emergency', icon: '🤖', tag: 'AI Fraud', diff: 'high' },
+            { module_id: 12, title: 'Bank KYC Verification', icon: '🏦', tag: 'Banking Fraud', diff: 'med' },
+            { module_id: 13, title: 'Instagram Verification', icon: '📸', tag: 'Social Phishing', diff: 'med' },
+            { module_id: 14, title: 'Electricity Bill Scam', icon: '⚡', tag: 'Utility Fraud', diff: 'med' },
+            { module_id: 15, title: 'Income Tax Refund Scam', icon: '💰', tag: 'Identity Theft', diff: 'high' },
+            { module_id: 16, title: 'Corporate Password Reset', icon: '🏢', tag: 'Corporate Phishing', diff: 'high' },
+            { module_id: 17, title: 'SIM Upgrade Scam', icon: '📶', tag: 'Telecom Fraud', diff: 'high' },
+            { module_id: 18, title: 'Scholarship Scam', icon: '🎓', tag: 'Education Fraud', diff: 'med' },
+            { module_id: 19, title: 'Copyright Violation', icon: '📢', tag: 'Social Engineering', diff: 'high' },
+            { module_id: 20, title: 'Customs Parcel Fee', icon: '✈️', tag: 'Delivery Fraud', diff: 'med' },
+            { module_id: 21, title: 'Disaster Donation', icon: '❤️', tag: 'Charity Fraud', diff: 'med' },
+            { module_id: 22, title: 'Free Wi-Fi Login', icon: '📶', tag: 'Credential Theft', diff: 'high' }
+        ];
+
+        const userModules = {};
+        data.modules.forEach(m => { userModules[m.module_id] = m; });
+
+        const listHTML = allModules.map(mod => {
+            const userMod = userModules[mod.module_id];
+            const completed = userMod && userMod.submitted > 0;
+            const attempts = userMod ? userMod.attempts : 0;
+            const risk = userMod ? userMod.best_risk : 0;
+            const quiz = userMod ? userMod.best_quiz_pct : 0;
+
+            const riskClass = risk >= 70 ? 'ud-risk-high' : risk >= 40 ? 'ud-risk-med' : 'ud-risk-low';
+
+            return `
+        <div class="ud-module-row">
+          <div class="ud-module-icon">${eh(mod.icon)}</div>
+          <div class="ud-module-info">
+            <div class="ud-module-name">${eh(mod.title)}</div>
+            <div class="ud-module-tag">${eh(mod.tag)} • ${mod.diff === 'high' ? 'High Risk' : mod.diff === 'med' ? 'Medium' : 'Low'}</div>
+          </div>
+          <div class="ud-module-stats">
+            <div class="ud-module-stat">
+              <div class="ud-module-stat-num">${attempts}</div>
+              <div class="ud-module-stat-lbl">Attempts</div>
+            </div>
+            <div class="ud-module-stat">
+              <div class="ud-module-stat-num ${completed ? riskClass : ''}">${completed ? risk : '—'}</div>
+              <div class="ud-module-stat-lbl">Risk</div>
+            </div>
+            <div class="ud-module-stat">
+              <div class="ud-module-stat-num">${completed && quiz > 0 ? quiz + '%' : '—'}</div>
+              <div class="ud-module-stat-lbl">Quiz</div>
+            </div>
+          </div>
+          <div class="ud-module-status ${completed ? 'ud-status-completed' : 'ud-status-notstarted'}">
+            ${completed ? '✓ Done' : 'Not Started'}
+          </div>
+        </div>
+      `;
+        }).join('');
+
+        document.getElementById('ud-module-list').innerHTML = listHTML;
+
+    } catch (err) {
+        console.error('User detail error:', err);
+        document.getElementById('ud-username').textContent = 'Error';
+        document.getElementById('ud-module-list').innerHTML = '<div class="ud-empty">Failed to load user details.</div>';
+    }
+}
+
+function closeUserDetail() {
+    document.getElementById('user-detail-modal').classList.remove('open');
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        closeUserDetail();
+    }
+});
+
+function renderAdminStats(t) {
+    document.getElementById('as-sessions').textContent = t.total_sessions || 0;
+    document.getElementById('as-submissions').textContent = t.total_submissions || 0;
+    document.getElementById('as-completions').textContent = t.total_completions || 0;
+    document.getElementById('as-avgrisk').textContent = Math.round(t.avg_risk_score || 0);
+    // unique modules attempted (from byModule in adminData)
+    const uniq = (adminData.byModule || []).length;
+    const el = document.getElementById('as-unique-mods');
+    if (el) el.textContent = uniq + ' / 23';
+}
+
+function fmtDate(d) { return d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
+function diffBadge(d) { return `<span class="badge-${d}">${d}</span>`; }
+
+function renderRecent(rows) {
+    const tbody = document.getElementById('tbl-recent-body');
+    if (!rows || rows.length === 0) { tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div>📭</div>No activity yet</div></td></tr>`; return; }
+    tbody.innerHTML = rows.map(r => {
+        let exp = '—';
+        try { const arr = typeof r.data_exposed === 'string' ? JSON.parse(r.data_exposed) : r.data_exposed; if (arr && arr.length) exp = arr.slice(0, 2).join(', ') + (arr.length > 2 ? ` +${arr.length - 2}` : '') } catch { }
+        return `<tr>
+      <td style="color:var(--text3);white-space:nowrap">${fmtDate(r.completed_at)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3)">${(r.session_id || '').slice(0, 14)}…</td>
+      <td style="font-weight:500">${r.module_title || '—'}</td>
+      <td><span style="font-size:11px;color:var(--text3)">${r.module_tag || '—'}</span></td>
+      <td><span style="color:${r.risk_score > 60 ? 'var(--accent)' : r.risk_score > 30 ? 'var(--gold)' : 'var(--green)'};font-weight:600">${r.risk_score}</span></td>
+      <td style="font-size:12px;color:var(--text3)">${exp}</td>
+      <td>${r.quiz_total > 0 ? `${r.quiz_score}/${r.quiz_total}` : '—'}</td>
+      <td><button class="btn-del-row" data-action="del-module" data-mod-id="${r.module_id}" data-mod-title="${eh(r.module_title || '')}">Del</button></td>
+    </tr>`;
+    }).join('');
+}
+
+function renderModuleStats(rows) {
+    const el = document.getElementById('module-stats-list');
+    if (!rows || rows.length === 0) { el.innerHTML = `<div class="empty-state"><div>📊</div>No module data yet</div>`; return; }
+    el.innerHTML = rows.map(r => `
+    <div class="module-stat-card">
+      <div class="msc-left">
+        <div>${MODULES[r.module_id]?.icon || '📦'}</div>
+        <div><div class="msc-title">${r.module_title}</div><div class="msc-tag">${r.module_tag} · ${diffBadge(r.difficulty)}</div></div>
+      </div>
+      <div class="msc-nums">
+        <div class="msc-num"><div class="msc-n">${r.attempts}</div><div class="msc-l">Attempts</div></div>
+        <div class="msc-num"><div class="msc-n">${r.completions}</div><div class="msc-l">Submits</div></div>
+        <div class="msc-num"><div class="msc-n">${r.avg_risk}</div><div class="msc-l">Avg Risk</div></div>
+        <div class="msc-num"><div class="msc-n">${r.avg_quiz_pct || 0}%</div><div class="msc-l">Quiz Avg</div></div>
+      </div>
+            <button class="btn-del-mod" data-action="del-module" data-mod-id="${r.module_id}" data-mod-title="${eh(r.module_title || '')}">🗑 Clear</button>
+    </div>`).join('');
+}
+
+function renderSessions(rows) {
+    const tbody = document.getElementById('tbl-sessions-body');
+    if (!rows || rows.length === 0) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div>👤</div>No sessions yet</div></td></tr>`; return; }
+    tbody.innerHTML = rows.map(r => `<tr>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3)">${r.session_id}</td>
+    <td style="white-space:nowrap;color:var(--text3)">${fmtDate(r.started_at)}</td>
+    <td style="text-align:center;color:var(--blue);font-weight:600">${r.completed_modules}</td>
+    <td style="text-align:center;color:var(--accent);font-weight:600">${r.total_risk_score}</td>
+    <td style="text-align:center">${r.quiz_score}</td>
+    <td style="color:var(--text3);font-size:12px">${r.ip_address || '—'}</td>
+    <td><button class="btn-del-row" data-action="del-session" data-sid="${r.session_id}">Delete</button></td>
+  </tr>`).join('');
+}
+
+function renderUsers(rows) {
+    const tbody = document.getElementById('tbl-users-body');
+    if (!tbody) {
+        console.error('Users tbody not found');
+        return;
+    }
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><div>👥</div>No users registered yet</div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(function (u) {
+        return '<tr>' +
+            '<td style="font-weight:600">' + esc(u.username) + '</td>' +
+            '<td style="font-size:12px;color:var(--text3)">' + esc(u.email) + '</td>' +
+            '<td style="font-size:12px;color:var(--text3)">' + fmtDate(u.created_at) + '</td>' +
+            '<td style="font-size:12px;color:var(--text3)">' + fmtDate(u.last_login) + '</td>' +
+            '<td style="text-align:center;color:var(--blue);font-weight:600">' + (u.sessions_count || 0) + '</td>' +
+            '<td style="text-align:center">' + (u.attempts_count || 0) + '</td>' +
+            '<td style="text-align:center;color:var(--green);font-weight:600">' + (u.completions_count || 0) + '</td>' +
+            '<td style="text-align:center;color:' + ((u.avg_risk_score || 0) > 60 ? 'var(--accent)' : (u.avg_risk_score || 0) > 30 ? 'var(--gold)' : 'var(--green)') + ';font-weight:600">' + (u.avg_risk_score || 0) + '<td>' +
+            '<div style="display: flex; gap: 6px; align-items: center; flex-wrap: nowrap;">' +
+            '<button class="btn-view-user" data-user-id="' + esc(u._id || u.id) + '" style="background:rgba(99,102,241,.15);color:#a5b4fc;border:1px solid rgba(99,102,241,.3);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">📊 View</button>' +
+            '<button class="btn-del-user" data-action="del-user" data-user-id="' + esc(u._id || u.id) + '" data-user-name="' + esc(u.username) + '" style="padding:5px 10px;white-space:nowrap;">Del</button>' +
+            '</div>' +
+            '</td>' +
+            '</tr>';
+    }).join('');
+
+    // Attach event listeners for View buttons
+    tbody.querySelectorAll('.btn-view-user').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const userId = this.getAttribute('data-user-id');
+            openUserDetail(userId);
+        });
+    });
+}
+
+// ══════════════════════════════════════════════════════════
+//  ADMIN DELETE OPERATIONS (Single source of truth)
+// ══════════════════════════════════════════════════════════
+async function delUser(userId, username) {
+    showConfirm({
+        title: 'Delete User',
+        message: 'Permanently delete user "' + username + '" and ALL their data?',
+        details: '🗑 Username: <b>' + username + '</b><br>🗑 All their sessions<br>🗑 All their attempts<br>🗑 All their game results<br><br>⛔ This action cannot be undone.',
+        icon: '👤',
+        okText: 'Delete User',
+        danger: true,
+        callback: async (confirmed) => {
+            if (!confirmed) return;
+
+            const token = localStorage.getItem(LS_ADMIN_TOKEN);
+
+            if (API_ENABLED && token && token !== 'local-mode') {
+                try {
+                    const res = await fetch(API_BASE + '/admin/user/' + encodeURIComponent(userId), {
+                        method: 'DELETE',
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        showToast('User "' + username + '" deleted', 'ok', 'User Deleted');
+                        loadAdminData();
+                        return;
+                    } else if (res.status === 401) {
+                        showToast('Please login again', 'err', 'Session Expired');
+                        localStorage.removeItem(LS_ADMIN_TOKEN);
+                        return;
+                    } else if (res.status === 404) {
+                        showToast('Admin user route not found - need to add it', 'err', 'Server Error');
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('API delete user failed:', e.message);
+                }
+            }
+
+            showToast('Cannot delete user in localStorage mode', 'err', 'Not Supported');
+        }
+    });
+}
+async function delSession(sid) {
+    showConfirm({
+        title: 'Delete Session',
+        message: 'Permanently delete this session and all its data?',
+        details: `Session ID: <code>${sid}</code><br>🗑 All module attempts<br>🗑 All game results<br><br>⛔ This action cannot be undone.`,
+        icon: '👤',
+        okText: 'Delete Session',
+        danger: true,
+        callback: async (confirmed) => {
+            if (!confirmed) return;
+
+            const token = localStorage.getItem(LS_ADMIN_TOKEN);
+
+            if (API_ENABLED && token && token !== 'local-mode') {
+                try {
+                    const res = await fetch(API_BASE + '/admin/session/' + encodeURIComponent(sid), {
+                        method: 'DELETE',
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        showToast(`${data.deleted.attempts} attempts deleted`, 'ok', 'Session Deleted');
+                        loadAdminData();
+                        return;
+                    } else if (res.status === 401) {
+                        showToast('Please login again', 'err', 'Session Expired');
+                        localStorage.removeItem(LS_ADMIN_TOKEN);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('API delete failed:', e.message);
+                }
+            }
+
+            const res = localDelSession(sid);
+            if (res.ok) showToast('Session deleted (localStorage)', 'ok', 'Session Deleted');
+            else showToast('Delete failed', 'err');
+            loadAdminData();
+        }
+    });
+}
+
+async function delModuleData(modId, title) {
+    showConfirm({
+        title: 'Clear Module Data',
+        message: `Delete all attempts for "${title}"?`,
+        details: 'This will remove every attempt for this module across <b>all sessions</b>.',
+        icon: '🗑️',
+        okText: 'Delete Data',
+        danger: true,
+        callback: async (confirmed) => {
+            if (!confirmed) return;
+
+            const token = localStorage.getItem(LS_ADMIN_TOKEN);
+
+            if (API_ENABLED && token && token !== 'local-mode') {
+                try {
+                    const res = await fetch(API_BASE + '/admin/module/' + modId, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        showToast(`${data.deleted} attempts cleared`, 'ok', 'Module Data Deleted');
+                        loadAdminData();
+                        return;
+                    } else if (res.status === 401) {
+                        showToast('Please login again', 'err', 'Session Expired');
+                        localStorage.removeItem(LS_ADMIN_TOKEN);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('API delete failed:', e.message);
+                }
+            }
+
+            const res = localDelModule(modId);
+            if (res.ok) showToast(`${title} data cleared (localStorage)`, 'ok', 'Module Deleted');
+            else showToast('Delete failed', 'err');
+            loadAdminData();
+        }
+    });
+}
+
+async function confirmWipe() {
+    showConfirm({
+        title: '⚠ Wipe All Data',
+        message: 'This will permanently delete EVERY session, attempt, and game result.',
+        details: '🗑 <b>Sessions:</b> All user sessions<br>🗑 <b>Attempts:</b> Every module attempt<br>🗑 <b>Games:</b> Every game result<br><br>⛔ <b>This action is IRREVERSIBLE.</b> Consider exporting data first.',
+        icon: '💀',
+        okText: 'Yes, Wipe Everything',
+        danger: true,
+        callback: async (confirmed) => {
+            if (!confirmed) return;
+
+            const token = localStorage.getItem(LS_ADMIN_TOKEN);
+
+            if (API_ENABLED && token && token !== 'local-mode') {
+                try {
+                    showToast('Wiping all data from database...', 'warn', 'Wiping');
+                    const res = await fetch(API_BASE + '/admin/wipe', {
+                        method: 'DELETE',
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        showToast(`${data.deleted.sessions} sessions, ${data.deleted.attempts} attempts deleted`, 'ok', 'Database Wiped');
+                        loadAdminData();
+                        return;
+                    } else if (res.status === 401) {
+                        showToast('Please login again', 'err', 'Session Expired');
+                        localStorage.removeItem(LS_ADMIN_TOKEN);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('API wipe failed:', e.message);
+                }
+            }
+
+            const res = localWipeAll();
+            if (res.ok) showToast('All data wiped (localStorage)', 'ok', 'Data Wiped');
+            else showToast('Wipe failed', 'err');
+            loadAdminData();
+        }
+    });
+}
+
+
+// ─── EVENT DELEGATION FOR DYNAMICALLY GENERATED BUTTONS ───
+// ─── EVENT DELEGATION FOR DYNAMICALLY GENERATED BUTTONS ───
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+
+    if (action === 'del-session') {
+        const sid = btn.dataset.sid;
+        if (sid) delSession(sid);
+    } else if (action === 'del-module') {
+        const modId = btn.dataset.modId;
+        const modTitle = btn.dataset.modTitle || 'this module';
+        if (modId) delModuleData(parseInt(modId), modTitle);
+    } else if (action === 'del-user') {
+        const userId = btn.dataset.userId;
+        const userName = btn.dataset.userName || 'this user';
+        if (userId) delUser(userId, userName);
+    }
+});
+
+function exportData() {
+    showToast('Downloading export…', 'ok');
+    localExportJSON();
+}
+
+// ─── BOOT ──────────────────────────────────────────────────
+initSession();
+renderModules();
+
+// ═══════════════════════════════════════════════════════
+//  GAMES SIDEBAR LOGIC
+// ═══════════════════════════════════════════════════════
+function openGamesSidebar() {
+    document.getElementById('games-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('games-sidebar').classList.add('open'), 10);
+}
+function closeGamesSidebarDirect() {
+    document.getElementById('games-sidebar').classList.remove('open');
+    setTimeout(() => document.getElementById('games-overlay').classList.remove('open'), 300);
+}
+function closeGamesSidebar(e) {
+    if (e && e.target === document.getElementById('games-overlay')) closeGamesSidebarDirect();
+}
+
+// ═══════════════════════════════════════════════════════
+//  GAMES ENGINE
+// ═══════════════════════════════════════════════════════
+let gState = { gameId: null, qIdx: 0, score: 0, correct: 0, wrong: 0, total: 0, answered: false, results: [], timerInterval: null };
+
+function launchGame(gameId) {
+    if (!state.currentUser) {
+        showToast('Please login first to play games', 'err', 'Login Required');
+        openUserAuth('login');
+        return;
+    }
+    closeGamesSidebarDirect();
+    gState = { gameId, qIdx: 0, score: 0, correct: 0, wrong: 0, total: 0, answered: false, results: [], timerInterval: null };
+    const meta = GAMES_META[gameId];
+    document.getElementById('games-nav-title').textContent = meta ? meta.title : 'Game';
+    document.getElementById('games-score-display').textContent = '0';
+    go('games');
+    renderGame();
+}
+
+function renderGame() {
+    const gameId = gState.gameId;
+    const data = GAMES_DATA[gameId];
+    if (!data || !data.questions) { document.getElementById('game-runner-content').innerHTML = '<p style="color:var(--text3);text-align:center;padding:40px">Game not found.</p>'; return; }
+    gState.total = data.questions.length;
+    if (gState.qIdx >= gState.total) { showGameResults(); return; }
+    const q = data.questions[gState.qIdx];
+    gState.answered = false;
+    clearInterval(gState.timerInterval);
+    const meta = GAMES_META[gameId];
+    const c = document.getElementById('game-runner-content');
+    const dots = Array.from({ length: gState.total }, (_, i) => {
+        let cls = 'gdot';
+        if (i < gState.qIdx) cls += gState.results[i] ? ' done' : ' wrong-dot';
+        else if (i === gState.qIdx) cls += ' active';
+        return '<div class="' + cls + '"></div>';
+    }).join('');
+
+    if (q.type === 'email') {
+        c.innerHTML = '<div class="game-progress-dots">' + dots + '</div>' +
+            '<div class="game-score-bar">' +
+            '<div class="gscore-pill">📧 Email ' + (gState.qIdx + 1) + '/' + gState.total + '</div>' +
+            '<div class="gscore-pill">⭐ ' + gState.score + ' pts</div>' +
+            (meta.timed ? '<div class="gscore-pill">⏱ <span id="g-timer">' + meta.timerSecs + '</span>s</div>' : '') +
+            '</div>' +
+            (meta.timed ? '<div class="timer-bar-wrap"><div class="timer-bar-fill" id="g-timer-bar" style="width:100%"></div></div>' : '') +
+            '<div class="game-card-big">' +
+            '<div class="email-sim">' +
+            '<div class="email-header-bar">' +
+            '<div class="email-from">From: <b>' + q.from + '</b> &lt;' + q.email + '&gt;</div>' +
+            '<div class="email-from" style="margin-top:2px">To: you@company.com</div>' +
+            '<div class="email-subject">' + q.subject + '</div>' +
+            '</div>' +
+            '<div class="email-body">' + q.body + (q.linkText ? '<br><br><a class="email-link-btn">' + q.linkText + '</a>' : '') + '</div>' +
+            '</div>' +
+            '<div class="game-choice-row">' +
+            '<button class="game-btn-legit" onclick="answerEmailGame(false)">✅ Looks Legitimate</button>' +
+            '<button class="game-btn-phish" onclick="answerEmailGame(true)">🎣 This is Phishing</button>' +
+            '</div>' +
+            '<div class="game-feedback-box" id="g-feedback"></div>' +
+            '<button class="game-next-btn" id="g-next" onclick="nextGameQ()">Next Email →</button>' +
+            '</div>';
+        if (meta.timed) startGameTimer(meta.timerSecs);
+    } else if (q.type === 'url') {
+        c.innerHTML = '<div class="game-progress-dots">' + dots + '</div>' +
+            '<div class="game-score-bar">' +
+            '<div class="gscore-pill">🔗 URL ' + (gState.qIdx + 1) + '/' + gState.total + '</div>' +
+            '<div class="gscore-pill">⭐ ' + gState.score + ' pts</div>' +
+            '</div>' +
+            '<div class="game-card-big">' +
+            '<div class="game-title-row">' +
+            '<div class="game-icon-big" style="background:rgba(59,130,246,.15)">🌐</div>' +
+            '<div><div class="game-h1">' + q.question + '</div><div class="game-h2">Examine the URL carefully</div></div>' +
+            '</div>' +
+            '<div class="url-display">' + q.url + '</div>' +
+            (q.context ? '<p style="font-size:13px;color:var(--text3);margin-bottom:14px">' + q.context + '</p>' : '') +
+            '<div class="game-choice-row">' +
+            '<button class="game-btn-legit" onclick="answerUrlGame(false)">✅ Legitimate URL</button>' +
+            '<button class="game-btn-phish" onclick="answerUrlGame(true)">⚠️ Suspicious / Fake</button>' +
+            '</div>' +
+            '<div class="game-feedback-box" id="g-feedback"></div>' +
+            '<button class="game-next-btn" id="g-next" onclick="nextGameQ()">Next URL →</button>' +
+            '</div>';
+    } else if (q.type === 'mc') {
+        const optsHtml = q.options.map((o, i) => '<button class="mc-opt" id="mc-' + i + '" onclick="answerMCGame(' + i + ')">' + String.fromCharCode(65 + i) + '. ' + o + '</button>').join('');
+        c.innerHTML = '<div class="game-progress-dots">' + dots + '</div>' +
+            '<div class="game-score-bar">' +
+            '<div class="gscore-pill">❓ Q' + (gState.qIdx + 1) + '/' + gState.total + '</div>' +
+            '<div class="gscore-pill">⭐ ' + gState.score + ' pts</div>' +
+            '</div>' +
+            '<div class="game-card-big">' +
+            '<div style="font-size:15px;font-weight:600;margin-bottom:16px;line-height:1.5">' + q.question + '</div>' +
+            (q.scenario ? '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6">' + q.scenario + '</div>' : '') +
+            '<div class="mc-options" id="mc-opts">' + optsHtml + '</div>' +
+            '<div class="game-feedback-box" id="g-feedback"></div>' +
+            '<button class="game-next-btn" id="g-next" onclick="nextGameQ()">Next →</button>' +
+            '</div>';
+    } else if (q.type === 'checklist') {
+        const items = q.items.map((it, i) => '<div class="checklist-item" id="cli-' + i + '" onclick="toggleChecklist(' + i + ')"><div class="cl-checkbox" id="clc-' + i + '"></div><div>' + it.text + '</div></div>').join('');
+        c.innerHTML = '<div class="game-progress-dots">' + dots + '</div>' +
+            '<div class="game-score-bar">' +
+            '<div class="gscore-pill">🚩 Scenario ' + (gState.qIdx + 1) + '/' + gState.total + '</div>' +
+            '<div class="gscore-pill">⭐ ' + gState.score + ' pts</div>' +
+            '</div>' +
+            '<div class="game-card-big">' +
+            '<div style="font-size:15px;font-weight:600;margin-bottom:10px">' + q.question + '</div>' +
+            '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6">' + q.scenario + '</div>' +
+            '<p style="font-size:12px;color:var(--text3);margin-bottom:10px">Select ALL items that are red flags:</p>' +
+            '<div class="checklist-wrap">' + items + '</div>' +
+            '<button class="game-submit-btn" id="g-submit" onclick="submitChecklist()">Submit Answer</button>' +
+            '<div class="game-feedback-box" id="g-feedback"></div>' +
+            '<button class="game-next-btn" id="g-next" onclick="nextGameQ()">Next →</button>' +
+            '</div>';
+        window._clSelections = new Array(q.items.length).fill(false);
+    }
+}
+
+function toggleChecklist(idx) {
+    if (gState.answered) return;
+    window._clSelections[idx] = !window._clSelections[idx];
+    const el = document.getElementById('cli-' + idx);
+    const ch = document.getElementById('clc-' + idx);
+    if (window._clSelections[idx]) { el.classList.add('selected-flag'); ch.textContent = '✓'; }
+    else { el.classList.remove('selected-flag'); ch.textContent = ''; }
+}
+
+function submitChecklist() {
+    if (gState.answered) return;
+    gState.answered = true;
+    clearInterval(gState.timerInterval);
+    const q = GAMES_DATA[gState.gameId].questions[gState.qIdx];
+    let correct = 0;
+    q.items.forEach((it, i) => {
+        const sel = window._clSelections[i];
+        const el = document.getElementById('cli-' + i);
+        const ch = document.getElementById('clc-' + i);
+        if (it.isFlag) { el.classList.add('selected-flag'); ch.textContent = '🚩'; }
+        else { el.classList.add('selected-safe'); ch.textContent = '✅'; }
+        if (sel === it.isFlag) correct++;
+    });
+    const pts = Math.round((correct / q.items.length) * 10);
+    gState.score += pts; gState.correct++; gState.results.push(pts >= 5);
+    document.getElementById('games-score-display').textContent = gState.score;
+    const fb = document.getElementById('g-feedback');
+    fb.innerHTML = '🚩 <b>' + correct + '/' + q.items.length + ' correct!</b> ' + q.explanation;
+    fb.className = 'game-feedback-box ' + (pts >= 5 ? 'correct' : 'wrong');
+    fb.style.display = 'block';
+    document.getElementById('g-submit').style.display = 'none';
+    const nb = document.getElementById('g-next');
+    nb.style.display = 'inline-block';
+    if (gState.qIdx >= gState.total - 1) nb.textContent = 'See Results →';
+}
+
+function answerEmailGame(isPhish) {
+    if (gState.answered) return;
+    gState.answered = true;
+    clearInterval(gState.timerInterval);
+    const q = GAMES_DATA[gState.gameId].questions[gState.qIdx];
+    const correct = isPhish === q.isPhishing;
+    const pts = correct ? 10 : 0;
+    gState.score += pts;
+    if (correct) gState.correct++; else gState.wrong++;
+    gState.results.push(correct);
+    document.getElementById('games-score-display').textContent = gState.score;
+    const fb = document.getElementById('g-feedback');
+    fb.innerHTML = (correct ? '✅ <b>Correct!</b> ' : '❌ <b>Wrong!</b> ') + q.explanation;
+    fb.className = 'game-feedback-box ' + (correct ? 'correct' : 'wrong');
+    fb.style.display = 'block';
+    const nb = document.getElementById('g-next');
+    nb.style.display = 'inline-block';
+    if (gState.qIdx >= gState.total - 1) nb.textContent = 'See Results →';
+}
+
+function answerUrlGame(isFake) {
+    if (gState.answered) return;
+    gState.answered = true;
+    const q = GAMES_DATA[gState.gameId].questions[gState.qIdx];
+    const correct = isFake === q.isFake;
+    const pts = correct ? 10 : 0;
+    gState.score += pts;
+    if (correct) gState.correct++; else gState.wrong++;
+    gState.results.push(correct);
+    document.getElementById('games-score-display').textContent = gState.score;
+    const fb = document.getElementById('g-feedback');
+    fb.innerHTML = (correct ? '✅ <b>Correct!</b> ' : '❌ <b>Wrong!</b> ') + q.explanation;
+    fb.className = 'game-feedback-box ' + (correct ? 'correct' : 'wrong');
+    fb.style.display = 'block';
+    const nb = document.getElementById('g-next');
+    nb.style.display = 'inline-block';
+    if (gState.qIdx >= gState.total - 1) nb.textContent = 'See Results →';
+}
+
+function answerMCGame(idx) {
+    if (gState.answered) return;
+    gState.answered = true;
+    clearInterval(gState.timerInterval);
+    const q = GAMES_DATA[gState.gameId].questions[gState.qIdx];
+    const correct = idx === q.answer;
+    const pts = correct ? 10 : 0;
+    gState.score += pts;
+    if (correct) gState.correct++; else gState.wrong++;
+    gState.results.push(correct);
+    document.getElementById('games-score-display').textContent = gState.score;
+    document.querySelectorAll('.mc-opt').forEach((btn, i) => {
+        btn.disabled = true;
+        if (i === q.answer) btn.classList.add('correct');
+        if (i === idx && !correct) btn.classList.add('wrong');
+    });
+    const fb = document.getElementById('g-feedback');
+    fb.innerHTML = (correct ? '✅ <b>Correct!</b> ' : '❌ <b>Wrong!</b> ') + q.explanation;
+    fb.className = 'game-feedback-box ' + (correct ? 'correct' : 'wrong');
+    fb.style.display = 'block';
+    const nb = document.getElementById('g-next');
+    nb.style.display = 'inline-block';
+    if (gState.qIdx >= gState.total - 1) nb.textContent = 'See Results →';
+}
+
+function nextGameQ() { gState.qIdx++; renderGame(); }
+
+function startGameTimer(secs) {
+    let left = secs;
+    gState.timerInterval = setInterval(() => {
+        left--;
+        const el = document.getElementById('g-timer');
+        const bar = document.getElementById('g-timer-bar');
+        if (el) el.textContent = left;
+        if (bar) { bar.style.width = (left / secs * 100) + '%'; bar.style.background = left <= 5 ? '#ef4444' : left <= 10 ? '#fbbf24' : '#22c55e'; }
+        if (left <= 0) {
+            clearInterval(gState.timerInterval);
+            if (!gState.answered) {
+                gState.answered = true; gState.wrong++; gState.results.push(false);
+                const q = GAMES_DATA[gState.gameId]?.questions[gState.qIdx];
+                const fb = document.getElementById('g-feedback');
+                if (fb) { fb.innerHTML = '⏰ <b>Time\'s up!</b> ' + (q?.explanation || ''); fb.className = 'game-feedback-box wrong'; fb.style.display = 'block'; }
+                const nb = document.getElementById('g-next');
+                if (nb) { nb.style.display = 'inline-block'; if (gState.qIdx >= gState.total - 1) nb.textContent = 'See Results →'; }
+            }
+        }
+    }, 1000);
+}
+
+function showGameResults() {
+    clearInterval(gState.timerInterval);
+    const pct = Math.round((gState.correct / gState.total) * 100);
+    const grade = pct >= 90 ? '🏆 Expert!' : pct >= 70 ? '🥇 Proficient' : pct >= 50 ? '📘 Learning' : '⚠️ Needs Work';
+    const gradeColor = pct >= 90 ? 'var(--gold)' : pct >= 70 ? 'var(--green)' : pct >= 50 ? 'var(--blue)' : 'var(--accent)';
+    const meta = GAMES_META[gState.gameId] || {};
+    document.getElementById('game-runner-content').innerHTML =
+        '<div class="game-card-big">' +
+        '<div class="game-results">' +
+        '<div style="font-size:42px;margin-bottom:6px">' + (pct >= 70 ? '🎉' : '📚') + '</div>' +
+        '<div style="font-size:16px;color:var(--text3);margin-bottom:4px">' + (meta.title || 'Game') + ' — Results</div>' +
+        '<div class="results-score-big">' + pct + '%</div>' +
+        '<div class="results-grade" style="color:' + gradeColor + '">' + grade + '</div>' +
+        '<div class="results-grid">' +
+        '<div class="rg-item"><div class="rg-num" style="color:var(--green)">' + gState.correct + '</div><div class="rg-lbl">Correct</div></div>' +
+        '<div class="rg-item"><div class="rg-num" style="color:var(--accent)">' + (gState.total - gState.correct) + '</div><div class="rg-lbl">Wrong</div></div>' +
+        '<div class="rg-item"><div class="rg-num" style="color:var(--gold)">' + gState.score + '</div><div class="rg-lbl">Points</div></div>' +
+        '</div>' +
+        '<div>' +
+        '<button class="play-again-btn" onclick="launchGame(\'' + gState.gameId + '\')">🔄 Play Again</button>' +
+        '<button class="back-home-games-btn" onclick="openGamesSidebar()">🎮 More Games</button>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+}
+
+// ═══════════════════════════════════════════════════════
+//  GAMES METADATA
+// ═══════════════════════════════════════════════════════
+const GAMES_META = {
+    'email-phish': { title: 'Phishing Email Challenge', timed: false },
+    'email-business': { title: 'Business Email Scams', timed: false },
+    'jigsaw': { title: 'Google Jigsaw Style Quiz', timed: false },
+    'phishingbox-iq': { title: 'PhishingBox IQ Test', timed: true, timerSecs: 20 },
+    'url-spotter': { title: 'Fake vs Real URLs', timed: false },
+    'domain-spoof': { title: 'Domain Spoof Detector', timed: false },
+    'ssl-checker': { title: 'SSL Not Safe Quiz', timed: false },
+    'red-flag': { title: 'Spot the Red Flags', timed: false },
+    'raven-levels': { title: 'Raven Difficulty Levels', timed: false },
+    'gone-phishing': { title: 'Gone Phishing', timed: false },
+    'smishing': { title: 'Smishing Simulator', timed: false },
+    'social-eng': { title: 'Social Engineering Traps', timed: false },
+    'just-phishing': { title: 'Just For Phishing', timed: false },
+    'google-scam': { title: 'Google Scam Training', timed: false },
+    'phish-phinder': { title: 'Phish Phinder Lab', timed: false },
+    'qr-phishing': { title: 'QR Code Phishing Quiz', timed: false },
+    'deepfake-detect': { title: 'AI Deepfake Fraud Quiz', timed: false },
+};
+
+// ═══════════════════════════════════════════════════════
+//  GAMES DATA
+// ═══════════════════════════════════════════════════════
+const GAMES_DATA = {
+    'email-phish': {
+        questions: [
+            { type: 'email', from: 'PayPal Security', email: 'security@paypa1-alerts.com', subject: 'Unusual activity on your account', body: 'We have detected unusual sign-in activity on your PayPal account. Your account has been temporarily limited. Please verify your identity within 24 hours to avoid suspension.', linkText: 'Verify Account Now', isPhishing: true, explanation: 'The sender domain is paypa1-alerts.com — note the "1" replacing the letter "l". PayPal only emails from @paypal.com.' },
+            { type: 'email', from: 'GitHub', email: 'noreply@github.com', subject: '[GitHub] A new public key was added to your account', body: 'A new SSH key was added to your account on GitHub.com. If you believe this was done in error, you can remove the key and disable access from your account settings.', linkText: 'Review SSH Keys', isPhishing: false, explanation: 'Legitimate GitHub security notification. Real github.com domain, the action makes sense, no urgency or threats.' },
+            { type: 'email', from: 'State Bank of India', email: 'alerts@sbi-secure-login.net', subject: 'URGENT: Your SBI account will be blocked in 2 hours', body: 'Dear Customer, our security team has flagged suspicious activity. Your account will be blocked unless you login and re-verify your ATM PIN and Aadhaar number immediately.', linkText: 'Click Here to Avoid Blocking', isPhishing: true, explanation: 'SBI never emails asking for ATM PINs. The domain sbi-secure-login.net is fake — SBI emails come from @sbi.co.in.' },
+            { type: 'email', from: 'Amazon Order', email: 'order-update@amazon.in', subject: 'Your order #408-1234567 has shipped', body: 'Hello, your order has been shipped and is expected to be delivered by Thursday. You can track your package using the tracking number TBA123456IN via your account.', linkText: 'Track Package', isPhishing: false, explanation: 'Standard Amazon shipping notification. Domain is amazon.in, no unusual requests, no personal information requested.' },
+            { type: 'email', from: 'IT Department', email: 'itsupport@your-company-helpdesk.org', subject: '[Action Required] Password Expiry Notice', body: 'Your network password will expire in 2 hours. To avoid being locked out, please click below to reset your password using your existing credentials.', linkText: 'Reset Password Now', isPhishing: true, explanation: 'Your IT department uses your company domain, not "your-company-helpdesk.org". Never reset passwords via emailed links.' },
+            { type: 'email', from: 'Zoom', email: 'no-reply@zoom.us', subject: 'Your Zoom meeting is starting in 10 minutes', body: 'A meeting you were invited to is starting soon. Meeting ID: 854-2369-1710. Meeting time: 3:00 PM IST. Click Join Meeting to connect.', linkText: 'Join Meeting', isPhishing: false, explanation: 'Legitimate Zoom reminder. Domain zoom.us is correct, no sensitive info requested.' },
+            { type: 'email', from: 'IRCTC Customer Care', email: 'refund@irctc-customer-care.in', subject: 'PNR 4567891230 — Refund of 1200 pending', body: 'Dear passenger, your cancellation refund is pending. To process it, we need you to confirm your bank account number and UPI PIN via the form below.', linkText: 'Claim Refund', isPhishing: true, explanation: 'IRCTC processes refunds automatically — they never ask for UPI PINs via email. The domain is not the official irctc.co.in.' },
+            { type: 'email', from: 'Google Account', email: 'no-reply@accounts.google.com', subject: 'New sign-in on Windows', body: 'Your Google Account was just signed in to on a Windows device. If this was you, you do not need to do anything. If not, your account may be compromised. Check activity.', linkText: 'Check Activity', isPhishing: false, explanation: 'Legitimate Google account alert from accounts.google.com. No PIN or password requested.' },
+            { type: 'email', from: 'HR Department', email: 'hr@company-global-payroll.com', subject: 'Salary revision letter — Open immediately', body: 'Please find attached your revised CTC letter for FY2025-26. To unlock the document, enter your employee ID and corporate email password at the secure link below.', linkText: 'Unlock Document', isPhishing: true, explanation: 'A legitimate HR document never asks for your email password to unlock. This is credential harvesting pretending to be HR.' },
+            { type: 'email', from: 'Netflix', email: 'info@netflix.com', subject: 'Your payment details need updating', body: 'There was a problem processing your last payment. Please update your billing details to avoid service interruption. We attempted to charge your card ending in 4242 unsuccessfully.', linkText: 'Update Payment Method', isPhishing: true, explanation: 'Always update payment info by going directly to netflix.com — never via an email link. This is a classic credential phishing tactic.' }
+        ]
+    },
+    'email-business': {
+        questions: [
+            { type: 'email', from: 'CEO Rajesh Sharma', email: 'rajesh.sharma@company-group.net', subject: 'Urgent wire transfer needed', body: 'Hi, I am in an important meeting and cannot be disturbed. I need you to urgently wire money to a new vendor. I will explain later. Please handle this before 5pm. Do not discuss with others.', linkText: null, isPhishing: true, explanation: 'Classic CEO Fraud. Red flags: urgency, secrecy, new vendor, domain is not your real company domain. Always verify wire transfers verbally with your CEO.' },
+            { type: 'email', from: 'Vendor Billing', email: 'billing@trustedvendor-invoices.com', subject: 'Invoice Due Today — Bank Details Changed', body: 'Please find attached Invoice for services rendered. Our bank details have changed — please update your records and process payment to the new account immediately.', linkText: 'Download Invoice', isPhishing: true, explanation: 'Invoice fraud with changed bank details is a major red flag. Call the vendor on their known number to confirm banking changes before paying.' },
+            { type: 'email', from: 'Microsoft 365 Admin', email: 'admin@microsoft365-alerts.com', subject: 'Your M365 license will expire in 24 hours', body: 'Your organisation\'s Microsoft 365 subscription is set to expire. To avoid disruption to all users, please update billing immediately using the admin portal link below.', linkText: 'Update Billing', isPhishing: true, explanation: 'The domain microsoft365-alerts.com is fake. Microsoft bills through admin.microsoft.com. License renewals go through your IT team.' },
+            { type: 'email', from: 'LinkedIn Recruiter', email: 'talent@linkedin.com', subject: 'You have 3 new job matches', body: 'Hello, based on your profile we found 3 positions matching your skills. View recommendations to connect with recruiters interested in your background.', linkText: 'View Job Matches', isPhishing: false, explanation: 'Legitimate LinkedIn job alert from linkedin.com. No sensitive information requested.' },
+            { type: 'email', from: 'CFO Office', email: 'cfo.office@company.sharepoint-docs.org', subject: 'Salary data — Confidential review required', body: 'Please access the attached salary spreadsheet containing all employee compensation data for Q2 review. Login with your Office 365 credentials to decrypt the file.', linkText: 'Access Salary File', isPhishing: true, explanation: 'Legitimate SharePoint links come from your company\'s own SharePoint tenant. Never enter O365 credentials on third-party sites.' }
+        ]
+    },
+    'jigsaw': {
+        questions: [
+            { type: 'mc', question: 'An email says "Your account will be permanently deleted in 2 hours unless you act now!" Which manipulation tactic is this?', options: ['Authority', 'Urgency and Fear', 'Social Proof', 'Reciprocity'], answer: 1, explanation: 'Creating artificial urgency and fear is a primary phishing tactic. Scammers want you to panic and act before thinking critically.' },
+            { type: 'mc', question: 'A phishing email says "87,000 customers have already upgraded — why haven\'t you?" What tactic is being used?', options: ['Urgency', 'Scarcity', 'Social Proof', 'Authority'], answer: 2, explanation: 'Social proof exploits our tendency to follow others. Scammers fabricate large numbers to create false legitimacy.' },
+            { type: 'mc', question: 'You receive an email from "security@google-team.com" claiming to be from Google Security. What is the FIRST thing you should check?', options: ['Click the link and see what loads', 'The sender\'s display name', 'The actual email domain after the @', 'The email subject line'], answer: 2, explanation: 'Always check the actual email domain — not the display name. google-team.com is NOT google.com.' },
+            { type: 'mc', question: 'A phishing email offers you a "free security audit" and asks you to fill a form with company details. Which tactic is this?', options: ['Baiting', 'Spear Phishing', 'Reciprocity / Quid Pro Quo', 'Pretexting'], answer: 2, explanation: 'Offering something free (reciprocity) to lower your guard and extract information is common social engineering.' },
+            { type: 'mc', question: 'Which email subject is MOST likely a phishing attempt?', options: ['Your monthly statement is ready', 'Meeting notes from yesterday\'s standup', 'URGENT: Verify your identity or lose access', 'Invoice from Tata Consultancy Services'], answer: 2, explanation: 'Urgency + threat of loss + request to verify identity = classic phishing formula.' },
+            { type: 'mc', question: 'You get an email from your boss asking for gift card codes "for a client surprise." What should you do?', options: ['Buy the gift cards and send the codes immediately', 'Call your boss on their known number to verify', 'Reply to the email asking for more details', 'Forward the email to HR'], answer: 1, explanation: 'Very common CEO fraud/gift card scam. Always verify unusual requests by calling the person on their known number.' },
+            { type: 'mc', question: 'An email claims "You have a tax refund of 8,230. Provide bank details to claim." What is the key red flag?', options: ['The refund amount seems small', 'Government agencies never send emails', 'Legitimate refunds go to your registered account — they never ask for bank details via email', 'The subject line uses the word refund'], answer: 2, explanation: 'The Income Tax Department already has your bank details from your ITR. Any email asking you to provide bank details for a refund is a scam.' }
+        ]
+    },
+    'phishingbox-iq': {
+        questions: [
+            { type: 'email', from: 'Apple ID', email: 'appleid@id-apple-support.com', subject: 'Your Apple ID has been locked', body: 'Your Apple ID was used to sign in to iCloud on an iPhone in a new location. If this was not you, your account has been locked for security. Verify your identity now.', linkText: 'Unlock Apple ID', isPhishing: true, explanation: 'The domain id-apple-support.com is fake. Apple ID emails come exclusively from apple.com.' },
+            { type: 'email', from: 'Flipkart', email: 'noreply@flipkart.com', subject: 'Your order is out for delivery', body: 'Great news! Your order is out for delivery today. Estimated delivery: between 2 PM and 6 PM. You can track your order in the Flipkart app.', linkText: null, isPhishing: false, explanation: 'Standard Flipkart delivery notification. Real domain, no sensitive requests.' },
+            { type: 'email', from: 'WhatsApp Team', email: 'security@whatsapp-accounts.net', subject: 'Your WhatsApp will be deactivated', body: 'We noticed you violated our community guidelines. Your WhatsApp account will be permanently deactivated in 48 hours. Appeal this decision by verifying your phone number and OTP.', linkText: 'Submit Appeal', isPhishing: true, explanation: 'WhatsApp does not send deactivation notices via email. The domain whatsapp-accounts.net is fake. Never share OTPs with external websites.' },
+            { type: 'email', from: 'Aadhaar UIDAI', email: 'noreply@uidai.gov.in', subject: 'Your Aadhaar update was successful', body: 'This is to confirm that the address update for your Aadhaar number was processed successfully. If you did not make this change, visit uidai.gov.in immediately.', linkText: null, isPhishing: false, explanation: 'Legitimate UIDAI confirmation from the official uidai.gov.in domain. No information requested.' },
+            { type: 'email', from: 'Truecaller Support', email: 'support@truecaller-helpdesk.info', subject: 'Verify your Truecaller profile to avoid deletion', body: 'Your Truecaller profile has been flagged for inactive status. Please verify your mobile number and share the OTP you receive to confirm ownership of your account.', linkText: 'Verify Now', isPhishing: true, explanation: 'Asking you to share an OTP is an immediate red flag. OTPs should NEVER be shared with anyone.' }
+        ]
+    },
+    'url-spotter': {
+        questions: [
+            { type: 'url', question: 'Is this a legitimate bank URL?', url: 'https://www.<span class="url-sus">hdfcbank-secure</span>.com/netbanking', context: 'You received a link claiming to be HDFC NetBanking.', isFake: true, explanation: 'HDFC NetBanking is at netbanking.hdfcbank.com. "hdfcbank-secure.com" is fake — adding "secure" to a bank name is a common spoofing trick.' },
+            { type: 'url', question: 'Is this URL safe to use?', url: 'https://www.<span class="url-legit">amazon</span>.in/gp/cart/view.html', context: 'You want to check your Amazon India shopping cart.', isFake: false, explanation: 'Legitimate Amazon India URL. Domain is amazon.in with HTTPS and proper path structure.' },
+            { type: 'url', question: 'Would you trust this URL for signing in?', url: 'https://<span class="url-sus">g00gle</span>.com/accounts/login', context: 'You clicked a link that says "Sign in to Google"', isFake: true, explanation: 'Note "g00gle" — two zeros instead of two letter o\'s. Typosquatting — a visually similar but completely different fake domain.' },
+            { type: 'url', question: 'Is this URL legitimate for IRCTC booking?', url: 'https://www.<span class="url-legit">irctc</span>.co.in/nget/train-search', context: 'You want to book a train ticket.', isFake: false, explanation: 'Official IRCTC booking URL — irctc.co.in is the government-registered domain for Indian Railways ticketing.' },
+            { type: 'url', question: 'Is this PayPal URL safe?', url: 'http://<span class="url-sus">paypal.com.secure-login.ru</span>/signin', context: 'An email link claims to take you to PayPal login.', isFake: true, explanation: 'The actual domain here is secure-login.ru — not paypal.com. Also HTTP instead of HTTPS is a red flag.' },
+            { type: 'url', question: 'Safe to use for income tax filing?', url: 'https://<span class="url-legit">incometax.gov.in</span>/iec/foservices/#/login', context: 'You want to file your ITR online.', isFake: false, explanation: 'incometax.gov.in is the official Income Tax Department portal. The .gov.in suffix confirms it is a genuine government domain.' },
+            { type: 'url', question: 'Would you trust this for UPI payment?', url: 'https://<span class="url-sus">upi-payment-verify</span>.com/bharatpe-collect', context: 'You received a "payment collection request" link.', isFake: true, explanation: 'Legitimate UPI payments happen through your banking app, not via web links. This fake domain is designed to steal banking credentials.' }
+        ]
+    },
+    'domain-spoof': {
+        questions: [
+            { type: 'mc', question: 'Which of these is the REAL SBI website domain?', options: ['sbi.co.in', 'sbionline.co.in', 'statebankofindia.com', 'sbi-netbanking.in'], answer: 0, explanation: 'The real State Bank of India domain is sbi.co.in. All other variants are potentially fake domains.' },
+            { type: 'mc', question: 'An email links to "https://micros0ft.com". What is wrong with this URL?', options: ['Nothing, it looks fine', '"micros0ft" has a zero (0) instead of the letter "o"', 'It uses HTTPS which is suspicious', 'The domain is too short'], answer: 1, explanation: 'Replacing the letter "o" with a zero "0" is a classic homograph attack. At a quick glance they look identical, but the domain is completely fake.' },
+            { type: 'mc', question: 'You get a link to "https://linkedin.com.jobs-portal.net". Which part is the actual domain?', options: ['linkedin.com', 'jobs-portal.net', 'linkedin.com.jobs-portal.net', 'com.jobs-portal'], answer: 1, explanation: 'The actual domain is the last two parts before the first forward slash. Here it is jobs-portal.net — not LinkedIn at all.' },
+            { type: 'mc', question: 'Which technique places a convincing brand name at the start of a fake URL to deceive users?', options: ['Subdomain spoofing', 'Typosquatting', 'Homograph attack', 'Domain shadowing'], answer: 0, explanation: 'Subdomain spoofing puts a legitimate brand as a subdomain: "paypal.com.evil.xyz" — "evil.xyz" is the real domain, "paypal.com" is just a subdomain.' },
+            { type: 'mc', question: 'Which of these is most likely a fake version of "hdfc.com"?', options: ['hdfcbank.com', 'hdfc-bank-india.com', 'hdfc.net', 'hdfcsecurebank.in'], answer: 1, explanation: 'Adding words like "bank" and "india" is a classic spoofing pattern to make fake domains appear more legitimate.' }
+        ]
+    },
+    'ssl-checker': {
+        questions: [
+            { type: 'mc', question: 'A website shows a padlock and uses HTTPS. Does this mean it is safe?', options: ['Yes — HTTPS means the site is verified and safe', 'No — HTTPS only encrypts the connection, not that the site is legitimate', 'Yes — only banks can get SSL certificates', 'No — HTTPS sites are always hackers'], answer: 1, explanation: 'HTTPS only encrypts the connection. Phishing sites can and do have valid SSL certificates. The padlock does NOT mean the site is trustworthy.' },
+            { type: 'mc', question: 'You visit "https://amaz0n.in" and it has a padlock. What should concern you?', options: ['The padlock colour', 'The domain name — "amaz0n" has a zero not an "o"', 'The site uses .in', 'Nothing — HTTPS makes it safe'], answer: 1, explanation: 'Even with a valid SSL certificate, the domain "amaz0n.in" is fake. Always verify the domain name, not just the padlock status.' },
+            { type: 'mc', question: 'What does an SSL certificate actually verify?', options: ['That the website is safe and not a scam', 'The domain ownership and that data is encrypted in transit', 'That the website has been scanned for malware', 'All of the above'], answer: 1, explanation: 'An SSL certificate verifies domain ownership and encrypts traffic. It does NOT guarantee the site\'s intentions are honest.' },
+            { type: 'mc', question: 'A phishing site can get a free SSL certificate from which authority?', options: ['This is impossible', 'Let\'s Encrypt', 'The government only', 'Your ISP'], answer: 1, explanation: 'Let\'s Encrypt is a free, automated certificate authority. Anyone can get an SSL cert for any domain they control — including phishing domains.' }
+        ]
+    },
+    'red-flag': {
+        questions: [
+            { type: 'checklist', question: 'Identify all red flags in this scenario:', scenario: 'You receive an email from "support@paytm-helpdesk.co" saying: "URGENT NOTICE — Your Paytm KYC has expired. To avoid account suspension in 24 hours, click here to re-verify. You must submit your Aadhaar photo, PAN card, and selfie with a handwritten note." The email was sent at 3:14 AM.', items: [{ text: 'Unusual sender domain (paytm-helpdesk.co not paytm.com)', isFlag: true }, { text: 'Requesting Aadhaar and PAN via email', isFlag: true }, { text: 'Requesting a selfie with handwritten note', isFlag: true }, { text: 'Email sent at 3:14 AM', isFlag: true }, { text: 'The word URGENT in all caps', isFlag: true }, { text: 'Mentions account suspension as a threat', isFlag: true }, { text: 'Mentions KYC', isFlag: false }], explanation: 'Nearly every element is a red flag. Real KYC verification happens in the app, never via emailed forms requesting document photos.' },
+            { type: 'checklist', question: 'Spot the red flags in this phone call scenario:', scenario: 'A man calls claiming to be from "SBI Fraud Prevention Cell". He says your account has been compromised and asks you to: (1) confirm your account number, (2) tell him the OTP that just arrived on your phone, (3) not tell anyone as it is "a confidential investigation". He sounds professional and knows your name.', items: [{ text: 'Asking for OTP over phone', isFlag: true }, { text: 'Asking to keep it secret / confidential', isFlag: true }, { text: 'Caller claims to be from fraud prevention', isFlag: false }, { text: 'Asking to confirm your account number', isFlag: true }, { text: 'Caller knows your name', isFlag: false }, { text: 'Creating urgency — says account is compromised', isFlag: true }], explanation: 'No bank ever asks for OTPs over phone calls. The request for secrecy is manipulation. The caller knowing your name only means data was leaked — it does not confirm legitimacy.' }
+        ]
+    },
+    'raven-levels': {
+        questions: [
+            { type: 'mc', question: '[EASY] What does phishing mean in cybersecurity?', options: ['Hacking into servers using brute force', 'Tricking people into revealing sensitive info by pretending to be a trusted entity', 'Installing viruses through USB drives', 'Monitoring network traffic'], answer: 1, explanation: 'Phishing is a social engineering attack where attackers impersonate trusted organisations to steal credentials, money, or data.' },
+            { type: 'mc', question: '[EASY] Which is the safest way to visit your bank\'s website?', options: ['Click the link in an email from your bank', 'Type the bank\'s official URL directly in your browser', 'Search on Google and click the first result', 'Use a link from WhatsApp'], answer: 1, explanation: 'Always type the official URL directly. Search results can include ads pointing to fake sites, and email links can be spoofed.' },
+            { type: 'mc', question: '[MEDIUM] What is spear phishing?', options: ['Mass phishing emails sent to millions', 'Targeted phishing attack customised for a specific individual using personal details', 'Phishing via SMS', 'Phishing using fake phone calls'], answer: 1, explanation: 'Spear phishing is highly targeted — attackers research their victim to craft convincing personalised attacks. Much harder to detect than bulk phishing.' },
+            { type: 'mc', question: '[MEDIUM] Which action helps most against phishing attacks?', options: ['Buying an antivirus', 'Enabling 2-factor authentication on all accounts', 'Using a VPN', 'Deleting your social media'], answer: 1, explanation: 'Even if a phisher steals your password, 2FA prevents them from logging in. It is the single most effective defence against credential phishing.' },
+            { type: 'mc', question: '[HARD] What is a "watering hole attack"?', options: ['Sending phishing emails with water-themed subjects', 'Injecting malware into websites frequently visited by the target organisation\'s employees', 'Calling employees pretending to be IT support', 'Stealing credentials from public WiFi'], answer: 1, explanation: 'Advanced attackers identify websites their targets regularly visit and compromise those sites to deliver malware — like a predator waiting at a watering hole.' },
+            { type: 'mc', question: '[HARD] What is "consent phishing" in the context of OAuth?', options: ['Phishing emails that ask for consent before stealing data', 'Tricking users into granting a malicious app OAuth permissions to their Google or Microsoft account', 'A legal form of data collection', 'Phishing combined with ransomware'], answer: 1, explanation: 'Consent phishing tricks you into authorising a malicious app via OAuth — giving it access to your email and files without stealing your password. Your account can be compromised even with 2FA.' }
+        ]
+    },
+    'gone-phishing': {
+        questions: [
+            { type: 'mc', question: 'You won a lottery you never entered. The prize collector asks for a processing fee to release your large prize. What is this?', options: ['A real lottery', 'Advance fee fraud (419 scam)', 'A bank error in your favour', 'A government welfare scheme'], answer: 1, explanation: 'Classic advance fee fraud — you pay a small amount to receive a large non-existent prize. Once you pay, more fees appear.' },
+            { type: 'mc', question: 'A job offer arrives offering a very high salary for work-from-home with no experience needed. They ask for a "training kit deposit" upfront. This is likely:', options: ['A legitimate remote job', 'A job offer scam targeting people seeking employment', 'A government employment scheme', 'A genuine internship'], answer: 1, explanation: 'No legitimate employer asks you to pay to get a job. Work-from-home jobs requiring upfront fees are almost always scams.' },
+            { type: 'mc', question: 'A stranger on a dating app falls deeply in love with you after 2 weeks and asks you to invest in their "family crypto business." This is:', options: ['A real romantic connection', 'A romance scam also called pig butchering scam', 'A normal relationship milestone', 'An investment opportunity'], answer: 1, explanation: 'This is a pig butchering romance scam — build emotional connection, then introduce a fake investment opportunity.' },
+            { type: 'mc', question: 'An unknown person sends you money by "mistake" and asks you to return it. The money appears in your account. What should you do?', options: ['Return the money immediately via the same UPI ID', 'Contact your bank before doing anything — this may be a fraudulent transaction', 'Keep the money since it arrived in your account', 'Send the money to your own savings account'], answer: 1, explanation: 'This is a money mule or overpayment scam. The initial transfer may be reversed later, but the return transfer you make goes directly to the scammer. Always contact your bank first.' }
+        ]
+    },
+    'smishing': {
+        questions: [
+            { type: 'mc', question: 'SMS: "Your HDFC Bank card has been blocked due to suspicious activity. To unblock, call the number in this message immediately." What do you do?', options: ['Call the number immediately', 'Ignore and call the number on the back of your HDFC card directly', 'Reply to the SMS with your card number', 'Forward to your bank manager'], answer: 1, explanation: 'Never call numbers provided in SMSes. Call the number on the back of your actual card or visit hdfc.com directly.' },
+            { type: 'mc', question: 'SMS: "Congratulations! Your parcel is ready for delivery but we need additional customs fee. Pay here: shortened link." You did order something. What do you do?', options: ['Pay — it is a small amount and your parcel is waiting', 'Check the sender ID and track your order directly on the shopping app or website', 'Reply with your address to confirm delivery', 'Call the number in the SMS'], answer: 1, explanation: 'Delivery fee SMSes are very common smishing. The small fee is to capture your card details for much larger fraud. Always track orders through the official app.' },
+            { type: 'mc', question: 'SMS from "VM-GOVTIN": "Your Aadhaar-linked mobile number has been blocked. Click here to reactivate." What is this?', options: ['Official UIDAI communication', 'Smishing attack impersonating the government', 'An automated telecom message', 'A genuine TRAI notification'], answer: 1, explanation: 'UIDAI does not send reactivation links via SMS. Sender IDs like "VM-GOVTIN" can be easily spoofed by attackers.' },
+            { type: 'mc', question: 'Which of these is a genuine SMS you can trust?', options: ['"Your OTP for IRCTC login is 847291. Valid for 10 mins. Do not share."', '"Your account will be suspended. Verify now at secure-bank-verify.com"', '"FREE: You have won an iPhone! Claim at apple-prize.net"', '"URGENT: Your KYC expired. Share Aadhaar copy to unknown number"'], answer: 0, explanation: 'OTP delivery SMSes from legitimate services are safe to receive — but never share the OTP with anyone. All others show classic smishing patterns.' }
+        ]
+    },
+    'social-eng': {
+        questions: [
+            { type: 'mc', question: 'A caller says: "I am from Microsoft technical support. We detected a virus on your computer sending data to hackers. I need remote access to fix it immediately." What do you do?', options: ['Give them remote access', 'Hang up — Microsoft does not make unsolicited support calls', 'Ask them for proof then give access', 'Pay the fix fee they mention'], answer: 1, explanation: 'Microsoft tech support scam. Microsoft NEVER calls you unsolicited about viruses. These calls always end with malware installation or fake charges.' },
+            { type: 'mc', question: 'An email says "I am your CEO\'s assistant. The CEO needs urgent gift cards — please buy them and email the codes. He will reimburse you." What is this?', options: ['A legitimate executive request', 'Gift card scam using impersonation', 'A prank by a colleague', 'A genuine employee rewards programme'], answer: 1, explanation: 'Gift card scam — one of the most common forms of corporate social engineering. No legitimate business request involves buying gift cards.' },
+            { type: 'mc', question: 'You find a USB drive in your office car park labelled "Confidential — Salary Data." What should you do?', options: ['Plug it in to see if it belongs to someone', 'Hand it to IT security without plugging it in', 'Try it on your personal laptop', 'Format it and use it for your own files'], answer: 1, explanation: 'USB drop attacks are real. Attackers deliberately leave infected drives hoping curiosity wins. Always hand to IT without plugging in.' },
+            { type: 'mc', question: 'What is "pretexting" in social engineering?', options: ['Sending phishing emails with a fake story', 'Creating a fabricated scenario to manipulate someone into sharing information', 'Hacking using password guessing', 'Installing spy software remotely'], answer: 1, explanation: 'Pretexting involves creating a believable fake identity — e.g., pretending to be an auditor or IT staff — to extract information from the target.' },
+            { type: 'mc', question: 'An attacker follows an employee through a secure door by walking closely behind them. This is called:', options: ['Piggybacking or Tailgating', 'Shoulder surfing', 'Badge cloning', 'Dumpster diving'], answer: 0, explanation: 'Tailgating or piggybacking is a physical social engineering technique where an attacker gains access to a restricted area by following an authorised person.' }
+        ]
+    },
+    'just-phishing': {
+        questions: [
+            { type: 'mc', question: 'You just received an email with your full name, employer, and partial address — claiming your PAN is being deactivated. It seems very personalised. Why might this be even MORE dangerous than a generic phishing email?', scenario: 'Spear phishing uses personal information sourced from LinkedIn, data breaches, or social media to craft convincing attacks.', options: ['It is less dangerous because they already know your information', 'Personalised details increase trust and reduce your critical thinking', 'It is the same danger level as generic phishing', 'Personalised emails are always legitimate'], answer: 1, explanation: 'Spear phishing exploits the psychological principle of familiarity — knowing real details about you makes you assume the email is genuine. This dramatically increases attacker success rates.' },
+            { type: 'mc', question: 'You get an email from your "friend" asking for urgent financial help. Their email address looks correct. How could an attacker be sending this?', scenario: 'Your friend\'s account may have been compromised, or an attacker may have spoofed or slightly altered their email address.', options: ['Your friend must be in real trouble — send the money', 'The attacker may have hacked your friend\'s account or spoofed the address — verify by calling them', 'Email addresses cannot be spoofed', 'Only send half the amount to be safe'], answer: 1, explanation: 'Email spoofing and account compromise are both common. Always verify financial requests from friends via a phone call — regardless of how genuine the email looks.' },
+            { type: 'mc', question: 'You notice this in your browser after clicking an email link: "https://secure.bankofx.co.in.phishingsite.xyz/login". Where does this take you?', options: ['Official bank website', 'phishingsite.xyz — a fake domain', 'A government-secured site', 'Your bank\'s secure login page'], answer: 1, explanation: 'The actual domain is phishingsite.xyz. Everything before it is just a subdomain crafted to fool you. The last domain before the path slash is what matters.' }
+        ]
+    },
+    'google-scam': {
+        questions: [
+            { type: 'mc', question: 'Which of the following is the STRONGEST sign that a message is a scam?', options: ['It has a logo of a company you know', 'It asks you to act urgently and keep it secret', 'It was received on a weekday', 'It mentions your city name'], answer: 1, explanation: 'Urgency combined with secrecy is the primary psychological combination used by scammers. Legitimate organisations never ask you to hide communications or act in panic.' },
+            { type: 'mc', question: 'What should you do if you accidentally click a phishing link?', options: ['Clicking a link is always harmless', 'Disconnect from the internet, do not enter any information, change your passwords from a safe device, and report it', 'Clear your browser history and continue', 'Run a quick antivirus scan and you are fine'], answer: 1, explanation: 'Clicking can sometimes trigger downloads. Immediately disconnect, do not enter any info, change passwords from a clean device, and report.' },
+            { type: 'mc', question: 'You receive a Google security alert email. The best way to check if it is real is to:', options: ['Click the link in the email and check if the site looks like Google', 'Go directly to myaccount.google.com in a new tab and check your security activity', 'Call the number provided in the email', 'Check if the email has a Google logo'], answer: 1, explanation: 'Always navigate to the official site in a new browser tab — never via the link in the suspicious email.' },
+            { type: 'mc', question: 'Google will NEVER ask you to do which of the following in an email?', options: ['Review recent account activity', 'Verify a new device sign-in', 'Share your Google account password or provide an OTP to a support agent', 'Confirm your email address for account recovery'], answer: 2, explanation: 'Google and any legitimate service will NEVER ask for your password or request you share an OTP with a support person. If someone asks — it is always a scam.' }
+        ]
+    },
+    'phish-phinder': {
+        questions: [
+            { type: 'mc', question: 'Advanced: An attacker registers "xn--pypa1-wua.com" to phish PayPal users. What attack type is this?', options: ['Typosquatting', 'IDN Homograph Attack using Punycode', 'DNS spoofing', 'SSL stripping'], answer: 1, explanation: 'IDN Homograph Attack uses Unicode characters that look identical to ASCII characters encoded as Punycode. Browsers may display these as the real domain.' },
+            { type: 'mc', question: 'Which email headers should you check to verify sender authenticity?', options: ['Subject line', 'DMARC, DKIM, and SPF authentication results in email headers', 'The From display name', 'The email thread length'], answer: 1, explanation: 'DMARC, DKIM, and SPF are technical email authentication standards that reveal if an email is genuinely from the stated domain.' },
+            { type: 'mc', question: 'What is a "clone phishing" attack?', options: ['Creating a fake version of a legitimate website', 'Copying a previously legitimate email, replacing attachments or links with malicious ones, and resending it', 'Using AI to clone voices for vishing', 'Duplicating someone\'s email account'], answer: 1, explanation: 'Clone phishing takes a real email, clones it exactly, replaces safe links with malicious ones, and resends it — often claiming to be a "resend" of the original.' },
+            { type: 'mc', question: 'What is "MFA fatigue" or "MFA bombing"?', options: ['Getting tired of setting up 2FA', 'Flooding a victim with MFA push notifications until they accidentally approve one', 'A brute force attack against OTP codes', 'MFA systems overloading under high traffic'], answer: 1, explanation: 'MFA fatigue sends dozens of authentication requests hoping the victim approves one accidentally. This attack bypassed 2FA at major companies including Uber in 2022.' },
+            { type: 'mc', question: 'You need to investigate a suspicious email attachment safely. What is the BEST approach?', options: ['Open it on your work computer to analyse it', 'Open it in a sandboxed environment like any.run or Cuckoo Sandbox', 'Forward it to a friend to check', 'Open it on your personal phone'], answer: 1, explanation: 'A sandbox environment executes potentially malicious files in an isolated container, preventing damage while revealing malware behaviour.' }
+        ]
+    },
+    'qr-phishing': {
+        questions: [
+            { type: 'mc', question: 'You find a QR code sticker placed over the original payment QR at a restaurant. What should you do?', options: ['Scan it — all QR codes are safe', 'Look for signs of tampering and pay directly via UPI ID instead of scanning', 'Scan it but only pay a small amount first', 'Report it only if you lose money after scanning'], answer: 1, explanation: 'QR code tampering in restaurants and parking lots is a growing scam. Always check for physical tampering and prefer typing UPI IDs directly.' },
+            { type: 'mc', question: 'What is "Quishing"?', options: ['Stealing payment QR codes from shops', 'Phishing attacks delivered via QR codes that redirect to fake websites', 'A type of voice phishing using QR audio', 'QR codes used in ransomware'], answer: 1, explanation: 'Quishing (QR + phishing) uses malicious QR codes to redirect users to phishing sites or trigger malicious downloads. Phones do not show URLs before visiting QR codes, bypassing many security checks.' },
+            { type: 'mc', question: 'A scammer says they will send a QR code to process your refund — just scan it. What will actually happen if you scan it?', options: ['You will receive the refund immediately', 'Money will be DEDUCTED from your account — QR codes initiate payments, not receipts', 'Nothing will happen until you enter your PIN', 'The scammer gets your phone number only'], answer: 1, explanation: 'Critical UPI awareness: scanning a QR code initiates a PAYMENT from you. Scammers exploit this by claiming QR codes receive money. A refund via QR code is always a scam.' },
+            { type: 'mc', question: 'How can you preview a QR code URL before visiting it?', options: ['You cannot preview QR URLs', 'Use a QR scanner app that shows the URL before opening it, then verify the domain manually', 'All QR codes on official posters are safe', 'Only government QR codes can be previewed'], answer: 1, explanation: 'Several QR scanner apps show you the destination URL before opening it. Always check that the domain matches the expected legitimate website.' }
+        ]
+    },
+    'deepfake-detect': {
+        questions: [
+            { type: 'mc', question: 'You receive a voice call from what sounds exactly like your manager asking to transfer funds urgently. It is actually an AI voice clone. What is the safest response?', options: ['Transfer immediately — your manager\'s voice is unmistakable', 'Hang up and call your manager back on their official number to verify', 'Ask the caller a personal question to verify identity', 'Transfer half the amount as a compromise'], answer: 1, explanation: 'AI voice cloning can replicate voices with just seconds of audio from social media. Always hang up and call back on a number you independently verified.' },
+            { type: 'mc', question: 'A video call from your "CEO" asks for urgent bank credentials. The video quality seems slightly off. This could be:', options: ['A genuine emergency — quality issues happen in international calls', 'A deepfake video attack — verify through a secure alternative channel before any action', 'A normal video call glitch', 'Real — slight quality issues are common'], answer: 1, explanation: 'AI deepfake video attacks are used in BEC scams. Visual artefacts, unnatural blinking, slight lip-sync issues are warning signs. Always use an alternative verification channel.' },
+            { type: 'mc', question: 'What is the safest way to verify identity in high-stakes situations where deepfakes are a concern?', options: ['Video call quality check', 'Pre-agreed code word or phrase known only to the real person', 'Ask for their employee ID', 'Check if their email domain is correct'], answer: 1, explanation: 'Establishing a pre-agreed safe word with colleagues is the most reliable defence against voice or video deepfake fraud. It cannot be cloned because the attacker does not know it.' },
+            { type: 'mc', question: 'AI can generate realistic phishing emails by scraping your LinkedIn profile. What is the BEST defence against this type of highly personalised attack?', options: ['Make your LinkedIn profile completely private', 'Train employees to always verify unusual requests through official channels regardless of how convincing they seem', 'Ban LinkedIn usage in the company', 'Use only encrypted email'], answer: 1, explanation: 'Process-based verification — confirming unusual requests through official back-channels — is the defence that works even when the attack is indistinguishable from a real message.' }
+        ]
+    }
+};
+
+function updateProgressDisplay() {
+    // Update nav bar
+    const doneEl = document.getElementById('nav-done');
+    if (doneEl) doneEl.textContent = state.completed.length; // 🟢 Removed the + '/23'
+
+    const riskEl = document.getElementById('nav-risk');
+    if (riskEl) {
+        riskEl.textContent = state.risk; // 🟢 Removed the 'Risk: ' +
+        riskEl.style.color = state.risk > 60 ? 'var(--accent)' : state.risk > 30 ? 'var(--gold)' : 'var(--green)';
+    }
+
+    // Re-render modules to show completion status
+    if (typeof renderModules === 'function') {
+        renderModules();
+    }
+}
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
